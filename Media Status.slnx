@@ -1,0 +1,8 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Debugtest" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Project Path="Media Status/Media Status.csproj" />
+</Solution>
