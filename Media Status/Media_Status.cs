@@ -1175,8 +1175,11 @@ namespace MediaControlApp.Forms
                 li.SubItems.Add(ep.CachedEpisode.ToString());                  // 2: colEpisode
 
                 // 3: colDuration
-                string durationDisplay = ep.Duration > TimeSpan.Zero
-                    ? (ep.Duration.Hours > 0 ? ep.Duration.ToString(@"h\:mm\:ss") : ep.Duration.ToString(@"m\:ss"))
+                // Ensures we handle TimeSpan or raw seconds safely, with padded minutes (e.g. 05:20 instead of 5:20)
+                TimeSpan ts = ep.Duration is TimeSpan t ? t : TimeSpan.FromSeconds(Convert.ToDouble(ep.Duration));
+
+                string durationDisplay = ts > TimeSpan.Zero
+                    ? (ts.Hours > 0 ? ts.ToString(@"h\:mm\:ss") : ts.ToString(@"mm\:ss"))
                     : "--:--";
 
                 li.SubItems.Add(durationDisplay);
