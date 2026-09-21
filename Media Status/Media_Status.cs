@@ -1178,6 +1178,7 @@ namespace MediaControlApp.Forms
                 string durationDisplay = ep.Duration > TimeSpan.Zero
                     ? (ep.Duration.Hours > 0 ? ep.Duration.ToString(@"h\:mm\:ss") : ep.Duration.ToString(@"m\:ss"))
                     : "--:--";
+
                 li.SubItems.Add(durationDisplay);
 
                 // 4: colWatched
