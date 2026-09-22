@@ -85,6 +85,8 @@ namespace MediaControlApp.Forms
             flowActionsInner = new FlowLayoutPanel();
             btnShutdownOptions = new Button();
             chkSubtitles = new CheckBox();
+            cmbScreens = new ComboBox();
+            chkFullscreen = new CheckBox();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -433,6 +435,8 @@ namespace MediaControlApp.Forms
             flowActionsInner.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             flowActionsInner.Controls.Add(btnShutdownOptions);
             flowActionsInner.Controls.Add(chkSubtitles);
+            flowActionsInner.Controls.Add(cmbScreens);
+            flowActionsInner.Controls.Add(chkFullscreen);
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
@@ -461,6 +465,29 @@ namespace MediaControlApp.Forms
             chkSubtitles.Text = "Subtitles";
             chkSubtitles.UseVisualStyleBackColor = true;
             chkSubtitles.CheckedChanged += chkSubtitles_CheckedChanged;
+            // 
+            // cmbScreens
+            // 
+            cmbScreens.FormattingEnabled = true;
+            cmbScreens.Location = new Point(186, 3);
+            cmbScreens.Name = "cmbScreens";
+            cmbScreens.Size = new Size(151, 23);
+            cmbScreens.TabIndex = 2;
+            cmbScreens.SelectedIndexChanged += cmbScreens_SelectedIndexChanged;
+            // 
+            // chkFullscreen
+            // 
+            chkFullscreen.AutoSize = true;
+            chkFullscreen.Checked = true;
+            chkFullscreen.CheckState = CheckState.Checked;
+            chkFullscreen.Location = new Point(348, 6);
+            chkFullscreen.Margin = new Padding(8, 6, 3, 3);
+            chkFullscreen.Name = "chkFullscreen";
+            chkFullscreen.Size = new Size(85, 19);
+            chkFullscreen.TabIndex = 3;
+            chkFullscreen.Text = "Fullscreen";
+            chkFullscreen.UseVisualStyleBackColor = true;
+            chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
             // 
             // MainForm
             // 
@@ -496,5 +523,7 @@ namespace MediaControlApp.Forms
         }
 
         private Button BtnCheckIMDb;
+        private ComboBox cmbScreens;
+        private CheckBox chkFullscreen;
     }
 }

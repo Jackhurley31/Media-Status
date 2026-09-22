@@ -244,7 +244,67 @@ namespace MediaControlApp.Forms
 
             // Apply saved font to MainForm on startup
             FontHelper.ApplyFontToForm(this, _userSettings.UIFontSize, _userSettings.UIFontFamily);
+
+            // Load saved window size, state, and position
+            LoadScreenSettings();
         }
+
+
+
+        private void LoadScreenSettings()
+        {
+            cmbScreens.Items.Clear();
+            cmbScreens.Items.Add("Default / Unlocked (Follow Windows)");
+
+            var classifiedScreens = ScreenLayoutClassifier.GetClassifiedScreens();
+
+            foreach (var info in classifiedScreens)
+            {
+                cmbScreens.Items.Add(info.Label);
+            }
+
+            cmbScreens.DropDownWidth = 340;
+
+            int targetIndex = _userSettings.TargetScreenIndex;
+            if (targetIndex >= 0 && targetIndex < classifiedScreens.Count)
+            {
+                cmbScreens.SelectedIndex = targetIndex + 1;
+            }
+            else
+            {
+                cmbScreens.SelectedIndex = 0;
+            }
+
+            chkFullscreen.Checked = _userSettings.EnableFullscreen;
+        }
+
+
+
+        private void cmbScreens_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbScreens.SelectedIndex >= 0)
+            {
+                // Dropdown index 0 -> TargetScreenIndex = -1 (Unlocked)
+                // Dropdown index 1 -> TargetScreenIndex = 0 (Display 1)
+                // Dropdown index 2 -> TargetScreenIndex = 1 (Display 2)
+                _userSettings.TargetScreenIndex = cmbScreens.SelectedIndex - 1;
+                SaveScreenSettings();
+            }
+        }
+
+        private void chkFullscreen_CheckedChanged(object sender, EventArgs e)
+        {
+            SaveScreenSettings();
+        }
+
+        private void SaveScreenSettings()
+        {
+            _userSettings.TargetScreenIndex = cmbScreens.SelectedIndex - 1;
+            _userSettings.EnableFullscreen = chkFullscreen.Checked;
+            AppConfig.Save(_userSettings);
+        }
+
+
 
         private void SaveSettings()
         {
@@ -383,71 +443,55 @@ namespace MediaControlApp.Forms
 
 
 
+
+
+
+
+
+
         private ProcessStartInfo GetVlcStartInfo(string filePath, double startSeconds = 0)
         {
-            var settings = AppConfig.Load();
+            var settings = _userSettings ?? AppConfig.Load();
 
-            // Check custom path set in OptionsForm
             if (!string.IsNullOrWhiteSpace(settings.CustomPlayerPath) && File.Exists(settings.CustomPlayerPath))
             {
                 string safePath = filePath.Replace("\"", "\\\"");
                 string startTimeArg = startSeconds > 5 ? $" --start-time={Math.Floor(startSeconds)}" : "";
                 string httpArgs = " --extraintf=http --http-password=mediacontrol --play-and-exit";
 
-                // Subtitle command-line flags for VLC
-                string subArgs = settings.EnableSubtitles
-                    ? " --sub-track=0"
-                    : " --no-sub-autodetect --sub-track=-1";
-
-                // Pass VLC's native dark palette flag if app dark mode is active
+                string subArgs = settings.EnableSubtitles ? " --sub-track=0" : " --no-sub-autodetect --sub-track=-1";
                 string darkPaletteArg = settings.DarkMode ? " --qt-dark-palette" : "";
+                string fullscreenArg = settings.EnableFullscreen ? " --fullscreen" : "";
+                string screenArg = "";
+
+                // DO NOT SORT. Match native Screen.AllScreens exactly as the UI does.
+                if (settings.TargetScreenIndex >= 0 && settings.TargetScreenIndex < Screen.AllScreens.Length)
+                {
+                    var targetScreen = Screen.AllScreens[settings.TargetScreenIndex];
+                    int winDispNumber = GetDisplayNumber(targetScreen.DeviceName);
+
+                    screenArg = $" --video-x={targetScreen.Bounds.X} --video-y={targetScreen.Bounds.Y}" +
+                                $" --qt-fullscreen-screennumber={winDispNumber}" +
+                                $" --directx-device=\\\\.\\DISPLAY{winDispNumber}";
+                }
 
                 return new ProcessStartInfo
                 {
                     FileName = settings.CustomPlayerPath,
-                    Arguments = $"\"{safePath}\" --fullscreen{startTimeArg}{httpArgs}{subArgs}{darkPaletteArg}",
+                    Arguments = $"\"{safePath}\"{fullscreenArg}{screenArg}{startTimeArg}{httpArgs}{subArgs}{darkPaletteArg}",
                     UseShellExecute = false,
                     CreateNoWindow = false
                 };
             }
-
-            var result = MessageBox.Show(
-                "VLC Media Player is required for auto-tracking playback, but the specified path was not found.\n\n" +
-                "• Click 'Yes' to open the official VLC download page.\n" +
-                "• Click 'No' to play using your default system video player.",
-                "VLC Not Found",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Warning
-            );
-
-            if (result == DialogResult.Yes)
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = "https://www.videolan.org/vlc/",
-                        UseShellExecute = true
-                    });
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Unable to open browser: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                return null;
-            }
-            else if (result == DialogResult.No)
-            {
-                string directory = Path.GetDirectoryName(filePath);
-                return new ProcessStartInfo
-                {
-                    FileName = filePath,
-                    WorkingDirectory = string.IsNullOrEmpty(directory) ? RootFolder : directory,
-                    UseShellExecute = true
-                };
-            }
-
             return null;
+        }
+
+
+        private int GetDisplayNumber(string deviceName)
+        {
+            if (string.IsNullOrEmpty(deviceName)) return 1;
+            var match = System.Text.RegularExpressions.Regex.Match(deviceName, @"\d+");
+            return match.Success && int.TryParse(match.Value, out int num) ? num : 1;
         }
 
 
@@ -3196,10 +3240,6 @@ namespace MediaControlApp.Forms
             return cleaned;
         }
 
-
-
-
-
-
+    
     }
 }

@@ -15,6 +15,9 @@ namespace Media_Status
         // Font Accessibility Settings
         public float UIFontSize { get; set; } = 11.0f; // Default base size (e.g. 11pt - 16pt)
         public string UIFontFamily { get; set; } = "Arial";
+
+        public bool EnableFullscreen { get; set; } = true;
+        public int TargetScreenIndex { get; set; } = 0; // 0 = Primary / Default
     }
 
     public static class AppConfig
