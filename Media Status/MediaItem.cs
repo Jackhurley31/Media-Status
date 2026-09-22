@@ -27,6 +27,8 @@ namespace MediaControlApp.Models
 
 
 
+        public DateTime CachedDateModified { get; set; }
+
         public TimeSpan Duration { get; set; } = TimeSpan.Zero;
 
         public string FilePath { get; set; } = string.Empty;

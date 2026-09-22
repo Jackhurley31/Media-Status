@@ -626,13 +626,13 @@ namespace MediaControlApp.Forms
                     treeShows.Nodes.Add(topContinueNode); // Index 0
                 }
 
-                // 4. Create "Recently Added" node directly BELOW "Continue"
+                // 4. Create "Recently Added" node directly BELOW "Continue" (Using Fast C: Drive Cache)
                 TreeNode topRecentlyAddedNode = null;
                 DateTime thirtyDaysAgo = DateTime.Now.AddDays(-30);
 
-                // Filter items modified within last 30 days and exclude shows that have ANY watched progress
+                // Filter items modified within last 30 days using in-memory cached property
                 var recentTvItems = tvItems
-                    .Where(i => i.GetDateModified(BuildFullPath(i.FilePath)) >= thirtyDaysAgo)
+                    .Where(i => i.CachedDateModified >= thirtyDaysAgo)
                     .GroupBy(i => i.CachedSeriesName)
                     .Where(g => !g.Any(ep => ep.IsWatched(AppConfig.CurrentUser))) // Exclude if user started or finished watching
                     .SelectMany(g => g)
@@ -1079,12 +1079,18 @@ namespace MediaControlApp.Forms
                         if (File.Exists(jsonPath))
                         {
                             var diskItems = MediaCache.Load(jsonPath);
+
+                            // Index local items into a dictionary for O(1) lookups instead of O(N) LINQ scans
+                            var localDict = localItemsSnapshot.ToDictionary(
+                                i => i.FilePath,
+                                i => i,
+                                StringComparer.OrdinalIgnoreCase
+                            );
+
                             foreach (var diskItem in diskItems)
                             {
-                                var localItem = localItemsSnapshot.FirstOrDefault(i =>
-                                    string.Equals(i.FilePath, diskItem.FilePath, StringComparison.OrdinalIgnoreCase));
-
-                                if (localItem != null)
+                                if (!string.IsNullOrEmpty(diskItem.FilePath) &&
+                                    localDict.TryGetValue(diskItem.FilePath, out var localItem))
                                 {
                                     localItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                                     localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
@@ -1362,7 +1368,10 @@ namespace MediaControlApp.Forms
 
 
 
-        // Helper 1: Reads video duration natively using Windows Shell metadata
+
+        private static int? _cachedDurationIndex = null;
+
+        // Helper 1: Reads video duration natively using Windows Shell metadata (Optimized with Caching)
         private TimeSpan GetVideoDuration(string fullPath)
         {
             try
@@ -1383,31 +1392,49 @@ namespace MediaControlApp.Forms
                 {
                     string val = null;
 
-                    // Try the standard Windows Shell property indices for Duration/Length
-                    // Index 27 is standard, 32 and 19 are common on certain Windows builds
+                    // 1. Try standard Windows Shell property indices first
                     int[] commonIndices = new int[] { 27, 32, 19 };
                     foreach (int index in commonIndices)
                     {
-                        string rawVal = shellFolder.GetDetailsOf(folderItem, index);
-                        if (!string.IsNullOrWhiteSpace(rawVal) && rawVal.Contains(":"))
+                        try
                         {
-                            val = rawVal;
-                            break;
+                            string rawVal = shellFolder.GetDetailsOf(folderItem, index);
+                            if (!string.IsNullOrWhiteSpace(rawVal) && rawVal.Contains(":"))
+                            {
+                                val = rawVal;
+                                break;
+                            }
                         }
+                        catch { }
                     }
 
-                    // Fallback: search column names if direct indices returned empty
+                    // 2. Try the cached index if standard indices missed
+                    if (string.IsNullOrWhiteSpace(val) && _cachedDurationIndex.HasValue)
+                    {
+                        try
+                        {
+                            val = shellFolder.GetDetailsOf(folderItem, _cachedDurationIndex.Value);
+                        }
+                        catch { }
+                    }
+
+                    // 3. Fallback: Search column names once, then cache the result
                     if (string.IsNullOrWhiteSpace(val))
                     {
                         for (int i = 0; i < 350; i++)
                         {
-                            string header = shellFolder.GetDetailsOf(null, i);
-                            if (string.Equals(header, "Duration", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(header, "Length", StringComparison.OrdinalIgnoreCase))
+                            try
                             {
-                                val = shellFolder.GetDetailsOf(folderItem, i);
-                                break;
+                                string header = shellFolder.GetDetailsOf(null, i);
+                                if (string.Equals(header, "Duration", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(header, "Length", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _cachedDurationIndex = i; // Cache for subsequent calls[cite: 1]
+                                    val = shellFolder.GetDetailsOf(folderItem, i);
+                                    break;
+                                }
                             }
+                            catch { }
                         }
                     }
 
