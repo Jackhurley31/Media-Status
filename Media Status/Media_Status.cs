@@ -2640,7 +2640,7 @@ namespace MediaControlApp.Forms
 
         private bool _isProcessingStop = false;
 
-        private void btnStop_Click(object sender, EventArgs e)
+        private async void btnStop_Click(object sender, EventArgs e)
         {
             if (_isProcessingStop) return;
             _isProcessingStop = true;
@@ -2652,41 +2652,7 @@ namespace MediaControlApp.Forms
             SetPlaybackState(false);
             _isPlaying = false;
 
-            // 2. Kill tracked process directly
             var procToKill = currentPlayingProcess;
-            if (procToKill != null)
-            {
-                try
-                {
-                    if (!procToKill.HasExited)
-                    {
-                        procToKill.Kill(entireProcessTree: true);
-                        procToKill.WaitForExit(1000);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to kill tracked VLC process: {ex.Message}");
-                }
-            }
-
-            // 3. Fallback: Force kill ANY vlc process running if still open
-            try
-            {
-                foreach (var proc in Process.GetProcessesByName("vlc"))
-                {
-                    try
-                    {
-                        if (!proc.HasExited)
-                        {
-                            proc.Kill(entireProcessTree: true);
-                        }
-                    }
-                    catch { }
-                }
-            }
-            catch { }
-
             currentPlayingProcess = null;
 
             if (listEpisodes.SelectedItems.Count > 0 &&
@@ -2695,7 +2661,44 @@ namespace MediaControlApp.Forms
                 UpdatePlayButtonText(selectedMedia);
             }
 
-            // 4. Save state
+            // 2. Offload process killing and WaitForExit to a background thread
+            await Task.Run(() =>
+            {
+                if (procToKill != null)
+                {
+                    try
+                    {
+                        if (!procToKill.HasExited)
+                        {
+                            procToKill.Kill(entireProcessTree: true);
+                            procToKill.WaitForExit(1000);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to kill tracked VLC process: {ex.Message}");
+                    }
+                }
+
+                // Fallback: Force kill ANY vlc process running if still open
+                try
+                {
+                    foreach (var proc in Process.GetProcessesByName("vlc"))
+                    {
+                        try
+                        {
+                            if (!proc.HasExited)
+                            {
+                                proc.Kill(entireProcessTree: true);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            });
+
+            // 3. Save state in background
             _backgroundSaveTask = Task.Run(() =>
             {
                 lock (_saveLock)
