@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,9 @@ namespace Media_Status
     public static class MediaCache
     {
         private static readonly object FileLock = new();
+
+        [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
+        private static extern int WNetGetConnection(string lpszLocalName, StringBuilder lpszRemoteName, ref int cbRemoteName);
 
         private static readonly JsonSerializerOptions Options = new()
         {
@@ -33,6 +37,26 @@ namespace Media_Status
                 Path.DirectorySeparatorChar,
                 Path.AltDirectorySeparatorChar
             );
+
+            // Smarter resolution: If it's a mapped drive letter (e.g., Z:\), resolve it to its UNC equivalent
+            if (baseDir.Length >= 2 && baseDir[1] == ':')
+            {
+                string driveLetter = baseDir.Substring(0, 2);
+                try
+                {
+                    var sb = new StringBuilder(512);
+                    int capacity = sb.Capacity;
+                    if (WNetGetConnection(driveLetter, sb, ref capacity) == 0)
+                    {
+                        // Combine the UNC share path with any subfolders from the base directory
+                        baseDir = sb.ToString() + baseDir.Substring(2);
+                    }
+                }
+                catch
+                {
+                    // Fall back to standard path if resolution fails
+                }
+            }
 
             // Compute an 8-character hex hash based on the directory path
             string folderHash = ComputeHash(baseDir);
