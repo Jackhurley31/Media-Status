@@ -49,6 +49,8 @@ namespace MediaControlApp.Forms
 
         private CancellationTokenSource _playbackCts;
 
+        private CancellationTokenSource _posterCancellationTokenSource;
+
         private bool _isFavouriting = false;
 
         private bool _isPlaying = false;
@@ -67,14 +69,9 @@ namespace MediaControlApp.Forms
         public string JsonPath => Path.Combine(RootFolder, "media_state.json");
 
 
-
-
         public MainForm()
         {
             InitializeComponent();
-
-
-
 
 
             // Allows the form to catch key events before focused controls capture them
@@ -174,53 +171,6 @@ namespace MediaControlApp.Forms
 
 
 
-
-
-
-
-
-
-
-
-
-
-        protected override void WndProc(ref Message m)
-        {
-            if (m.Msg == WM_QUERYENDSESSION)
-            {
-                SavePlaybackProgressDirect();
-            }
-            base.WndProc(ref m);
-        }
-
-        private void SavePlaybackProgressDirect()
-        {
-            if (_isPlaying)
-            {
-                try
-                {
-                    // Call your existing stop handler logic directly on the UI thread
-                    // This reuses the exact position-saving and XML serialization code already wired up in your app
-                    if (this.InvokeRequired)
-                    {
-                        this.Invoke(new Action(() => btnStop_Click(this, EventArgs.Empty)));
-                    }
-                    else
-                    {
-                        btnStop_Click(this, EventArgs.Empty);
-                    }
-                }
-                catch (Exception)
-                {
-                    // Fail silently to ensure OS shutdown isn't blocked
-                }
-            }
-        }
-
-
-
-
-
         private void ApplyButtonStyle(Button btn, Color backColor, Color foreColor)
         {
             btn.FlatStyle = FlatStyle.Flat;
@@ -233,8 +183,6 @@ namespace MediaControlApp.Forms
             btn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             btn.Padding = new Padding(6, 3, 6, 3);
         }
-
-
 
 
         private UserSettings userSettings = new UserSettings();
@@ -250,7 +198,6 @@ namespace MediaControlApp.Forms
             // Load saved window size, state, and position
             LoadScreenSettings();
         }
-
 
 
         private void LoadScreenSettings()
@@ -307,16 +254,6 @@ namespace MediaControlApp.Forms
         }
 
 
-
-        private void SaveSettings()
-        {
-            userSettings.DarkMode = darkMode;
-            AppConfig.Save(userSettings);
-        }
-
-
-
-
         private string BuildFullPath(string filePath)
         {
             if (string.IsNullOrEmpty(filePath)) return string.Empty;
@@ -350,9 +287,6 @@ namespace MediaControlApp.Forms
             string cleanRelativePath = filePath.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             return Path.Combine(RootFolder, cleanRelativePath);
         }
-
-
-
 
 
 
@@ -441,14 +375,6 @@ namespace MediaControlApp.Forms
                 await PlayEpisodesQueueAsync(playbackQueue);
             }
         }
-
-
-
-
-
-
-
-
 
 
         private ProcessStartInfo GetVlcStartInfo(string filePath, double startSeconds = 0)
@@ -899,6 +825,72 @@ namespace MediaControlApp.Forms
         }
 
 
+        private async void treeShows_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            if (e.Node == null) return;
+
+            // 1. Walk up to the root node to check the top-level section
+            TreeNode showNode = e.Node;
+            while (showNode.Parent != null)
+            {
+                showNode = showNode.Parent;
+            }
+
+            string rootName = showNode.Text.Trim();
+
+            // 2. Ignore the main "Films" category entirely
+            if (rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
+            {
+                picPoster.Image = null;
+                return;
+            }
+
+            // 3. Extract the clean show title
+            string showTitle = rootName.Replace("★ ", "").Trim();
+
+            // 4. Handle smart/dynamic folders (Continue, Watched, Recently added)
+            if (rootName.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
+                rootName.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
+                rootName.Equals("Recently added", StringComparison.OrdinalIgnoreCase))
+            {
+                var mediaItem = e.Node.Tag as MediaItem;
+
+                // If it has a cached series name, use that (means it's a TV show episode)
+                if (mediaItem != null && !string.IsNullOrEmpty(mediaItem.CachedSeriesName))
+                {
+                    showTitle = mediaItem.CachedSeriesName;
+                }
+                else if (e.Node.Parent != null)
+                {
+                    // Otherwise, walk up the node hierarchy inside the smart list to find the grouping
+                    TreeNode current = e.Node;
+                    while (current.Parent != null && current.Parent.Parent != null)
+                    {
+                        current = current.Parent;
+                    }
+                    showTitle = current.Text.Replace("★ ", "").Trim();
+                }
+                else
+                {
+                    // Clicked the category header itself
+                    picPoster.Image = null;
+                    return;
+                }
+            }
+
+            // 5. Final safety check: if the title still points to a category header or empty string, abort
+            string[] ignoredCategories = { "Top", "Continue", "Watched", "Recently added", "Films" };
+            if (Array.Exists(ignoredCategories, cat => cat.Equals(showTitle, StringComparison.OrdinalIgnoreCase)))
+            {
+                picPoster.Image = null;
+                return;
+            }
+
+            await LoadAutoOnlinePosterAsync(showTitle);
+        }
+
+
+
         private void listEpisodes_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_isProcessingStop) return;
@@ -1054,12 +1046,6 @@ namespace MediaControlApp.Forms
             }
         }
 
-
-
-
-        // Add this at the top of your Form class if you haven't already:
-        // private CancellationTokenSource _posterCancellationTokenSource;
-        private CancellationTokenSource _posterCancellationTokenSource;
 
         private async Task LoadAutoOnlinePosterAsync(string mediaTitle)
         {
@@ -1231,18 +1217,6 @@ namespace MediaControlApp.Forms
                 picPoster.Image = null;
             }
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2053,9 +2027,6 @@ namespace MediaControlApp.Forms
                 }
             }
         }
-
-
-
 
 
 
@@ -2947,7 +2918,7 @@ namespace MediaControlApp.Forms
                     // Check if the hashed local cache file exists on the C: drive
                     if (!File.Exists(MediaCache.LocalCachePath))
                     {
-                        // If it doesn't exist, what gets saved here?
+                        // If it doesn't exist
                         if (File.Exists(JsonPath))
                         {
                             CreateJsonBackup();
@@ -3208,38 +3179,7 @@ namespace MediaControlApp.Forms
             return null;
         }
 
-        private void PlayFirstUnwatchedEpisode()
-        {
-            if (listEpisodes.Items.Count == 0) return;
-
-            // Filter strictly for in-progress items (saved position > 0 and not marked complete)
-            var toFinishEpisodes = listEpisodes.Items
-                .Cast<ListViewItem>()
-                .Select(li => li.Tag as MediaItem)
-                .Where(m => m != null && m.GetSavedPosition(AppConfig.CurrentUser) > 0 && !m.IsWatched(AppConfig.CurrentUser))
-                .ToList();
-
-            if (toFinishEpisodes.Count == 0) return;
-
-            // Highlight the first ToFinish item in the UI list
-            var firstItem = toFinishEpisodes.First();
-            foreach (ListViewItem item in listEpisodes.Items)
-            {
-                if (item.Tag == firstItem)
-                {
-                    listEpisodes.Focus();
-                    listEpisodes.SelectedItems.Clear();
-                    item.Selected = true;
-                    item.Focused = true;
-                    listEpisodes.EnsureVisible(item.Index);
-                    break;
-                }
-            }
-
-            _ = PlayEpisodesQueueAsync(toFinishEpisodes);
-        }
-
-
+       
 
         private void btnResume_MouseDown(object sender, MouseEventArgs e)
         {
@@ -3272,7 +3212,6 @@ namespace MediaControlApp.Forms
                 optionsForm.ShowDialog(this);
             }
         }
-
 
 
 
@@ -3491,68 +3430,6 @@ namespace MediaControlApp.Forms
             return cleaned;
         }
 
-        private async void treeShows_AfterSelect(object sender, TreeViewEventArgs e)
-        {
-            if (e.Node == null) return;
-
-            // 1. Walk up to the root node to check the top-level section
-            TreeNode showNode = e.Node;
-            while (showNode.Parent != null)
-            {
-                showNode = showNode.Parent;
-            }
-
-            string rootName = showNode.Text.Trim();
-
-            // 2. Ignore the main "Films" category entirely
-            if (rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
-            {
-                picPoster.Image = null;
-                return;
-            }
-
-            // 3. Extract the clean show title
-            string showTitle = rootName.Replace("★ ", "").Trim();
-
-            // 4. Handle smart/dynamic folders (Continue, Watched, Recently added)
-            if (rootName.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
-                rootName.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
-                rootName.Equals("Recently added", StringComparison.OrdinalIgnoreCase))
-            {
-                var mediaItem = e.Node.Tag as MediaItem;
-
-                // If it has a cached series name, use that (means it's a TV show episode)
-                if (mediaItem != null && !string.IsNullOrEmpty(mediaItem.CachedSeriesName))
-                {
-                    showTitle = mediaItem.CachedSeriesName;
-                }
-                else if (e.Node.Parent != null)
-                {
-                    // Otherwise, walk up the node hierarchy inside the smart list to find the grouping
-                    TreeNode current = e.Node;
-                    while (current.Parent != null && current.Parent.Parent != null)
-                    {
-                        current = current.Parent;
-                    }
-                    showTitle = current.Text.Replace("★ ", "").Trim();
-                }
-                else
-                {
-                    // Clicked the category header itself
-                    picPoster.Image = null;
-                    return;
-                }
-            }
-
-            // 5. Final safety check: if the title still points to a category header or empty string, abort
-            string[] ignoredCategories = { "Top", "Continue", "Watched", "Recently added", "Films" };
-            if (Array.Exists(ignoredCategories, cat => cat.Equals(showTitle, StringComparison.OrdinalIgnoreCase)))
-            {
-                picPoster.Image = null;
-                return;
-            }
-
-            await LoadAutoOnlinePosterAsync(showTitle);
-        }
+        
     }
 }
