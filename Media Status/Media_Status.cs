@@ -2745,6 +2745,39 @@ namespace MediaControlApp.Forms
             });
         }
 
+
+
+
+
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            try
+            {
+                lock (_saveLock)
+                {
+                    // Check if the hashed local cache file exists on the C: drive
+                    if (!File.Exists(MediaCache.LocalCachePath))
+                    {
+                        // If it doesn't exist, what gets saved here?
+                        if (File.Exists(JsonPath))
+                        {
+                            CreateJsonBackup();
+                        }
+                        MediaCache.Save(JsonPath, items);
+                        MediaCache.SaveLocal(items);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error during startup check: {ex.Message}");
+            }
+        }
+
+
+
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             // Check if VLC process is currently running/playing

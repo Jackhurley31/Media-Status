@@ -502,6 +502,7 @@ namespace MediaControlApp.Forms
             Text = "Media Control";
             WindowState = FormWindowState.Maximized;
             FormClosing += MainForm_FormClosing;
+            Load += MainForm_Load;
             splitMain.Panel1.ResumeLayout(false);
             splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
