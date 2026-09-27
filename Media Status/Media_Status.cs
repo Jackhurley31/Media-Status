@@ -1128,7 +1128,7 @@ namespace MediaControlApp.Forms
                     }
                 }
 
-                // 2. Search for local poster files in targetDir or its parent show folder
+                // 2. Search for local poster files by walking UP through nested folders (Supports deep subfolders & category roots)
                 string localPosterFile = null;
                 string[] posterNames = { "poster.jpg", "poster.jpeg", "poster.png", "folder.jpg", "folder.jpeg", "folder.png", "cover.jpg", "cover.jpeg", "cover.png" };
 
@@ -1136,28 +1136,27 @@ namespace MediaControlApp.Forms
                 {
                     DirectoryInfo currentDir = new DirectoryInfo(targetDir);
 
-                    // Check current directory first (e.g. Season folder)
-                    foreach (var name in posterNames)
+                    // Walk up safely through multiple folder levels (up to 6 levels deep)
+                    for (int i = 0; i < 6 && currentDir != null; i++)
                     {
-                        string candidate = Path.Combine(currentDir.FullName, name);
-                        if (File.Exists(candidate))
+                        try
                         {
-                            localPosterFile = candidate;
-                            break;
-                        }
-                    }
-
-                    // If not found, check parent directory (e.g. Show root folder like Frasier 1993)
-                    if (localPosterFile == null && currentDir.Parent != null)
-                    {
-                        foreach (var name in posterNames)
-                        {
-                            string candidate = Path.Combine(currentDir.Parent.FullName, name);
-                            if (File.Exists(candidate))
+                            foreach (var name in posterNames)
                             {
-                                localPosterFile = candidate;
-                                break;
+                                string candidate = Path.Combine(currentDir.FullName, name);
+                                if (File.Exists(candidate))
+                                {
+                                    localPosterFile = candidate;
+                                    break;
+                                }
                             }
+                            if (localPosterFile != null) break;
+
+                            currentDir = currentDir.Parent;
+                        }
+                        catch
+                        {
+                            break;
                         }
                     }
                 }
