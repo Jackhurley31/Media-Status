@@ -192,8 +192,23 @@ namespace MediaControlApp.Forms
             userSettings = AppConfig.Load();
             darkMode = userSettings.DarkMode;
 
-            // Apply saved font to MainForm on startup
-            FontHelper.ApplyFontToForm(this, _userSettings.UIFontSize, _userSettings.UIFontFamily);
+            // Wrap the font application to prevent poster and UI layout bugs
+            this.SuspendLayout();
+            try
+            {
+                FontHelper.ApplyFontToForm(this, _userSettings.UIFontSize, _userSettings.UIFontFamily);
+
+                // Ensure poster scaling remains stable if applicable
+                if (picPoster != null)
+                {
+                    picPoster.SizeMode = PictureBoxSizeMode.Zoom;
+                }
+                this.PerformLayout();
+            }
+            finally
+            {
+                this.ResumeLayout(true);
+            }
 
             // Load saved window size, state, and position
             LoadScreenSettings();
@@ -1047,9 +1062,9 @@ namespace MediaControlApp.Forms
         }
 
 
-        private async Task LoadAutoOnlinePosterAsync(string mediaTitle)
+        private async Task LoadAutoOnlinePosterAsync(string mediaPathOrTitle)
         {
-            if (string.IsNullOrWhiteSpace(mediaTitle))
+            if (string.IsNullOrWhiteSpace(mediaPathOrTitle))
             {
                 picPoster.Image = null;
                 return;
@@ -1057,31 +1072,161 @@ namespace MediaControlApp.Forms
 
             try
             {
-                // 1. Clean up the title aggressively (strip extensions, years, brackets, resolution tags)
-                string cleanTitle = System.IO.Path.GetFileNameWithoutExtension(mediaTitle);
-                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\b(19|20)\d{2}\b", ""); // Remove years like 2021
-                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|hrhdtv|web-dl|bluray|x264|x265)", ""); // Remove quality tags
-                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[\(\[].*?[\)\]]", ""); // Remove text in brackets
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string showsDir = Path.Combine(baseDir, "Shows");
+
+                // 1. Resolve path using your app's BuildFullPath or direct checks
+                string resolvedPath = null;
+                try
+                {
+                    resolvedPath = BuildFullPath(mediaPathOrTitle);
+                }
+                catch
+                {
+                    resolvedPath = mediaPathOrTitle;
+                }
+
+                string targetDir = null;
+                if (!string.IsNullOrEmpty(resolvedPath))
+                {
+                    if (Directory.Exists(resolvedPath))
+                    {
+                        targetDir = resolvedPath;
+                    }
+                    else if (File.Exists(resolvedPath))
+                    {
+                        targetDir = Path.GetDirectoryName(resolvedPath);
+                    }
+                }
+
+                // Fallback lookup if targetDir is empty
+                if (string.IsNullOrEmpty(targetDir))
+                {
+                    string directCheck = Path.Combine(baseDir, mediaPathOrTitle);
+                    if (Directory.Exists(directCheck)) targetDir = directCheck;
+                    else if (File.Exists(directCheck)) targetDir = Path.GetDirectoryName(directCheck);
+                    else if (Directory.Exists(showsDir))
+                    {
+                        foreach (var showDir in Directory.GetDirectories(showsDir))
+                        {
+                            if (Path.GetFileName(showDir).Equals(mediaPathOrTitle, StringComparison.OrdinalIgnoreCase))
+                            {
+                                targetDir = showDir;
+                                break;
+                            }
+                            foreach (var seasonDir in Directory.GetDirectories(showDir))
+                            {
+                                if (Path.GetFileName(seasonDir).Equals(mediaPathOrTitle, StringComparison.OrdinalIgnoreCase) ||
+                                    File.Exists(Path.Combine(seasonDir, mediaPathOrTitle)))
+                                {
+                                    targetDir = seasonDir;
+                                    break;
+                                }
+                            }
+                            if (targetDir != null) break;
+                        }
+                    }
+                }
+
+                // 2. Search for local poster files in targetDir or its parent show folder
+                string localPosterFile = null;
+                string[] posterNames = { "poster.jpg", "poster.jpeg", "poster.png", "folder.jpg", "folder.jpeg", "folder.png", "cover.jpg", "cover.jpeg", "cover.png" };
+
+                if (!string.IsNullOrEmpty(targetDir) && Directory.Exists(targetDir))
+                {
+                    DirectoryInfo currentDir = new DirectoryInfo(targetDir);
+
+                    // Check current directory first (e.g. Season folder)
+                    foreach (var name in posterNames)
+                    {
+                        string candidate = Path.Combine(currentDir.FullName, name);
+                        if (File.Exists(candidate))
+                        {
+                            localPosterFile = candidate;
+                            break;
+                        }
+                    }
+
+                    // If not found, check parent directory (e.g. Show root folder like Frasier 1993)
+                    if (localPosterFile == null && currentDir.Parent != null)
+                    {
+                        foreach (var name in posterNames)
+                        {
+                            string candidate = Path.Combine(currentDir.Parent.FullName, name);
+                            if (File.Exists(candidate))
+                            {
+                                localPosterFile = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 3. LOAD LOCAL POSTER IMMEDIATELY (MemoryStream prevents file locking)
+                if (!string.IsNullOrEmpty(localPosterFile) && File.Exists(localPosterFile))
+                {
+                    _posterCancellationTokenSource?.Cancel();
+                    try
+                    {
+                        using (var fs = new FileStream(localPosterFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+                        {
+                            using (var img = Image.FromStream(fs))
+                            {
+                                picPoster.Image = new Bitmap(img);
+                            }
+                        }
+                        return; // Local poster found and loaded! Done instantly.
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error loading local poster: {ex.Message}");
+                    }
+                }
+
+                // 4. Extract the CORRECT Show Title for Web Search (Climbs out of Season folders automatically)
+                string sourceNameToClean = string.Empty;
+                if (!string.IsNullOrEmpty(targetDir))
+                {
+                    DirectoryInfo dirInfo = new DirectoryInfo(targetDir);
+                    // If we are inside a Season folder (e.g. "Season 1", "S01"), use the Parent (Show) name
+                    if (System.Text.RegularExpressions.Regex.IsMatch(dirInfo.Name, @"^(season\s*\d+|s\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) && dirInfo.Parent != null)
+                    {
+                        sourceNameToClean = dirInfo.Parent.Name;
+                    }
+                    else
+                    {
+                        sourceNameToClean = dirInfo.Name;
+                    }
+                }
+                else
+                {
+                    sourceNameToClean = Path.GetFileNameWithoutExtension(resolvedPath);
+                }
+
+                string cleanTitle = System.Text.RegularExpressions.Regex.Replace(sourceNameToClean, @"\b(19|20)\d{2}\b", "");
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|hrhdtv|web-dl|bluray|x264|x265|miniseries)", "");
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[\(\[].*?[\)\]]", "");
                 cleanTitle = cleanTitle.Replace(".", " ").Replace("_", " ").Trim();
 
                 if (string.IsNullOrWhiteSpace(cleanTitle)) return;
 
-                // 2. Local Cache Setup
                 string posterCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MediaControlApp", "PosterCache");
                 Directory.CreateDirectory(posterCacheDir);
 
                 string safeFileName = string.Join("_", cleanTitle.Split(Path.GetInvalidFileNameChars()));
                 string localPosterPath = Path.Combine(posterCacheDir, safeFileName + ".jpg");
 
-                // 3. Load from local cache safely without locking the file stream
                 if (File.Exists(localPosterPath))
                 {
                     _posterCancellationTokenSource?.Cancel();
                     try
                     {
-                        using (var bmpTemp = new Bitmap(localPosterPath))
+                        using (var fs = new FileStream(localPosterPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                         {
-                            picPoster.Image = new Bitmap(bmpTemp);
+                            using (var img = Image.FromStream(fs))
+                            {
+                                picPoster.Image = new Bitmap(img);
+                            }
                         }
                         return;
                     }
@@ -1091,7 +1236,6 @@ namespace MediaControlApp.Forms
                     }
                 }
 
-                // 4. Setup Cancellation for fast switching / race-condition prevention
                 _posterCancellationTokenSource?.Cancel();
                 _posterCancellationTokenSource = new CancellationTokenSource();
                 var cancellationToken = _posterCancellationTokenSource.Token;
@@ -1101,91 +1245,24 @@ namespace MediaControlApp.Forms
                     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
                     string imageUrl = null;
 
-                    // 5. Build dynamic search variations (Full name -> Subtitle chopped -> Shorter chunks of the name)
-                    List<string> searchVariations = new List<string>();
-                    searchVariations.Add(cleanTitle); // Try 1: Full cleaned title
+                    string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(cleanTitle)}";
+                    HttpResponseMessage response = await client.GetAsync(searchUrl, cancellationToken);
 
-                    // Try 2: If there's a colon or dash, try just the main title before it
-                    int splitIndex = cleanTitle.IndexOfAny(new char[] { ':', '-', '–' });
-                    if (splitIndex > 0)
+                    if (response.IsSuccessStatusCode)
                     {
-                        string mainPart = cleanTitle.Substring(0, splitIndex).Trim();
-                        if (!searchVariations.Contains(mainPart)) searchVariations.Add(mainPart);
-                    }
-
-                    // Try 3: Chop off words from the end one by one if it's a long title (e.g., "Hitlers Disastrous Deserts WAR" -> "Hitlers Disastrous Deserts" -> "Hitlers Disastrous")
-                    string[] words = cleanTitle.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    for (int i = words.Length - 1; i > 1; i--)
-                    {
-                        string partialTitle = string.Join(" ", words, 0, i);
-                        if (!searchVariations.Contains(partialTitle))
+                        string jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+                        using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
                         {
-                            searchVariations.Add(partialTitle);
-                        }
-                    }
-
-                    // Try 4: Strip all punctuation/special characters as a final resort
-                    string alphaNumericOnly = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[^\w\s]", "").Trim();
-                    if (!searchVariations.Contains(alphaNumericOnly) && alphaNumericOnly != cleanTitle)
-                    {
-                        searchVariations.Add(alphaNumericOnly);
-                    }
-
-                    // 6. Loop through variations and check parts until we get an image hit
-                    foreach (var queryTerm in searchVariations)
-                    {
-                        if (string.IsNullOrWhiteSpace(queryTerm)) continue;
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        // Attempt A: Strict Single Search
-                        try
-                        {
-                            string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(queryTerm)}";
-                            HttpResponseMessage response = await client.GetAsync(searchUrl, cancellationToken);
-
-                            if (response.IsSuccessStatusCode)
+                            if (doc.RootElement.TryGetProperty("image", out var imgObj) &&
+                                imgObj.TryGetProperty("medium", out var medProp))
                             {
-                                string jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                                using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
-                                {
-                                    if (doc.RootElement.TryGetProperty("image", out var imgObj) &&
-                                        imgObj.TryGetProperty("medium", out var medProp))
-                                    {
-                                        imageUrl = medProp.GetString();
-                                        if (!string.IsNullOrEmpty(imageUrl)) break; // Found it!
-                                    }
-                                }
+                                imageUrl = medProp.GetString();
                             }
                         }
-                        catch { /* Move to next shorter variation */ }
-
-                        // Attempt B: General Search Fallback for this variation chunk
-                        try
-                        {
-                            string fallbackUrl = $"https://api.tvmaze.com/search/shows?q={Uri.EscapeDataString(queryTerm)}";
-                            string fallbackJson = await client.GetStringAsync(fallbackUrl, cancellationToken);
-
-                            using (JsonDocument doc = JsonDocument.Parse(fallbackJson))
-                            {
-                                JsonElement root = doc.RootElement;
-                                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
-                                {
-                                    var firstShow = root[0].GetProperty("show");
-                                    if (firstShow.TryGetProperty("image", out var imgObj) &&
-                                        imgObj.TryGetProperty("medium", out var medProp))
-                                    {
-                                        imageUrl = medProp.GetString();
-                                        if (!string.IsNullOrEmpty(imageUrl)) break; // Found it!
-                                    }
-                                }
-                            }
-                        }
-                        catch { /* Move to next shorter variation */ }
                     }
 
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // 7. Download and cache the image if found
                     if (!string.IsNullOrEmpty(imageUrl))
                     {
                         byte[] imageBytes = await client.GetByteArrayAsync(imageUrl, cancellationToken);
@@ -1193,9 +1270,12 @@ namespace MediaControlApp.Forms
 
                         if (!cancellationToken.IsCancellationRequested)
                         {
-                            using (var bmpTemp = new Bitmap(localPosterPath))
+                            using (var ms = new MemoryStream(imageBytes))
                             {
-                                picPoster.Image = new Bitmap(bmpTemp);
+                                using (var img = Image.FromStream(ms))
+                                {
+                                    picPoster.Image = new Bitmap(img);
+                                }
                             }
                         }
                         return;
@@ -1204,13 +1284,10 @@ namespace MediaControlApp.Forms
 
                 if (!_posterCancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    picPoster.Image = null; // Clear if nothing found anywhere
+                    picPoster.Image = null;
                 }
             }
-            catch (OperationCanceledException)
-            {
-                // Handled cleanly when a user switches items quickly
-            }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Auto-poster error: {ex.Message}");
