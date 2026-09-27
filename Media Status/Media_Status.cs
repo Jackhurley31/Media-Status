@@ -1,4 +1,5 @@
 using Media_Status;
+using MediaControlApp.Helpers;
 using MediaControlApp.Models;
 using System;
 using System.Collections.Generic;
@@ -6,12 +7,12 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using static MediaControlApp.OptionsForm;
-using System.Net.Http;
 
 
 namespace MediaControlApp.Forms
@@ -114,6 +115,9 @@ namespace MediaControlApp.Forms
             menu.Items.Add("Favourite Season", null, BtnFavourite_Click);
             menu.Items.Add("Delete Show/Season", null, btnDelete_Click);   // Wire up btnDelete_Click (or populate TreeDelete_Click)
             treeShows.ContextMenuStrip = menu;
+
+            // Inside MainForm() constructor:
+            menu.Items.Add("Auto-Fix Episode Names (Web API)", null, BtnAutoRename_Click);
 
 
             treeShows.NodeMouseClick += (s, e) =>
@@ -2055,6 +2059,8 @@ namespace MediaControlApp.Forms
             ApplyButtonStyle(BtnFavourite, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnRefresh, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnOrganiz, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+            ApplyButtonStyle(BtnAutoRename, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+
 
 
             ApplyButtonStyle(btnArchive, Color.FromArgb(60, 64, 67), Color.White);
@@ -3255,7 +3261,7 @@ namespace MediaControlApp.Forms
             return null;
         }
 
-       
+
 
         private void btnResume_MouseDown(object sender, MouseEventArgs e)
         {
@@ -3506,6 +3512,254 @@ namespace MediaControlApp.Forms
             return cleaned;
         }
 
-        
+
+
+
+
+
+        /// <summary>
+        /// Fallback local renamer: formats files into clean SXXEXX ordering without external API calls.
+        /// </summary>
+        public static int RenameToSequentialOrder(List<MediaItem> episodes, string showName, Func<string, string> buildFullPathFunc)
+        {
+            if (episodes == null || episodes.Count == 0 || string.IsNullOrWhiteSpace(showName))
+                return 0;
+
+            int renamedCount = 0;
+
+            foreach (var ep in episodes)
+            {
+                int season = ep.CachedSeason;
+                int episode = ep.CachedEpisode;
+
+                string oldFullPath = buildFullPathFunc(ep.FilePath);
+                if (!File.Exists(oldFullPath)) continue;
+
+                string folder = Path.GetDirectoryName(oldFullPath);
+                string ext = Path.GetExtension(oldFullPath);
+
+                // Format into standard clean pattern: "Show Name - S01E01.ext"
+                string newFileName = $"{showName} - S{season:D2}E{episode:D2}{ext}";
+                string newFullPath = Path.Combine(folder, newFileName);
+
+                if (string.Equals(oldFullPath, newFullPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    if (!File.Exists(newFullPath))
+                    {
+                        File.Move(oldFullPath, newFullPath);
+                        ep.FilePath = newFullPath;
+                        ep.CacheParsed();
+                        renamedCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Sequential rename failed: {ex.Message}");
+                }
+            }
+
+            return renamedCount;
+        }
+
+
+
+        private void TransferMediaItemState(MediaItem item, string oldPath, string newPath)
+        {
+            if (item == null || string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string oldFileName = Path.GetFileName(oldPath);
+            string newFileName = Path.GetFileName(newPath);
+
+            // 1. Remap in-memory dictionaries (WatchedStates, PlaybackPositions, etc.)
+            var fields = this.GetType().GetFields(
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.Instance);
+
+            foreach (var field in fields)
+            {
+                if (field.GetValue(this) is System.Collections.IDictionary dict)
+                {
+                    if (dict.Contains(oldPath))
+                    {
+                        var val = dict[oldPath];
+                        dict.Remove(oldPath);
+                        dict[newPath] = val;
+                    }
+                    if (dict.Contains(oldFileName))
+                    {
+                        var val = dict[oldFileName];
+                        dict.Remove(oldFileName);
+                        dict[newFileName] = val;
+                    }
+                }
+            }
+
+            // 2. Update MediaItem properties directly
+            item.FilePath = newPath;
+            item.CacheParsed();
+
+            // 3. Directly patch media_state.json on disk
+            UpdateMediaStateJsonFile(oldPath, newPath, oldFileName, newFileName);
+        }
+
+        /// <summary>
+        /// Directly updates keys in media_state.json so watched state, progress, and favorites persist across renames.
+        /// </summary>
+        private void UpdateMediaStateJsonFile(string oldPath, string newPath, string oldFileName, string newFileName)
+        {
+            try
+            {
+                string jsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "media_state.json");
+                if (!File.Exists(jsonPath)) return;
+
+                string jsonContent = File.ReadAllText(jsonPath);
+                if (string.IsNullOrWhiteSpace(jsonContent)) return;
+
+                using var doc = System.Text.Json.JsonDocument.Parse(jsonContent);
+                var root = doc.RootElement;
+
+                // Replace old path/filename strings with new path/filename strings across the entire state structure
+                string updatedJson = jsonContent
+                    .Replace(System.Text.Json.JsonSerializer.Serialize(oldPath).Trim('"'), System.Text.Json.JsonSerializer.Serialize(newPath).Trim('"'))
+                    .Replace(System.Text.Json.JsonSerializer.Serialize(oldFileName).Trim('"'), System.Text.Json.JsonSerializer.Serialize(newFileName).Trim('"'));
+
+                File.WriteAllText(jsonPath, updatedJson);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to update media_state.json: {ex.Message}");
+            }
+        }
+
+
+
+
+        private async void BtnAutoRename_Click(object sender, EventArgs e)
+        {
+            List<MediaItem> itemsToRename = new();
+            string showName = string.Empty;
+
+            HashSet<string> categoryNodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Watched", "Continue", "Films", "TV Shows", "All Shows", "Favorites"
+    };
+
+            if (listEpisodes.SelectedItems.Count > 0)
+            {
+                foreach (ListViewItem li in listEpisodes.SelectedItems)
+                {
+                    if (li.Tag is MediaItem ep) itemsToRename.Add(ep);
+                }
+                showName = itemsToRename.FirstOrDefault()?.CachedSeriesName;
+            }
+            else if (treeShows.SelectedNode != null)
+            {
+                TreeNode selectedNode = treeShows.SelectedNode;
+                itemsToRename = GetItemsFromNode(selectedNode);
+
+                TreeNode curr = selectedNode;
+                while (curr != null)
+                {
+                    string cleanedText = curr.Text.Replace("★ ", "").Trim();
+                    if (curr.Parent != null && categoryNodes.Contains(curr.Parent.Text.Trim()))
+                    {
+                        showName = cleanedText;
+                        break;
+                    }
+                    if (curr.Parent == null && !categoryNodes.Contains(cleanedText))
+                    {
+                        showName = cleanedText;
+                        break;
+                    }
+                    curr = curr.Parent;
+                }
+
+                if (string.IsNullOrWhiteSpace(showName))
+                {
+                    showName = selectedNode.Text.Replace("★ ", "").Trim();
+                }
+            }
+
+            if (itemsToRename.Count == 0 || string.IsNullOrWhiteSpace(showName))
+            {
+                MessageBox.Show("Please select an episode, season, or show to rename.", "Rename Episodes", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            DialogResult choice = MessageBox.Show(
+                $"Target Show: '{showName}' ({itemsToRename.Count} files)\n\n" +
+                "• Click [Yes] for Official Titles (TVmaze API).\n" +
+                "• Click [No] for Clean Sequential Order (Show - S01E01.ext).\n" +
+                "• Click [Cancel] to abort.",
+                "Choose Rename Mode",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question
+            );
+
+            if (choice == DialogResult.Cancel) return;
+
+            this.Cursor = Cursors.WaitCursor;
+
+            try
+            {
+                int renamedCount = 0;
+
+                if (choice == DialogResult.Yes)
+                {
+                    renamedCount = await EpisodeRenamer.AutoRenameEpisodesAsync(
+                        itemsToRename, showName, BuildFullPath, TransferMediaItemState
+                    );
+                }
+                else if (choice == DialogResult.No)
+                {
+                    renamedCount = EpisodeRenamer.RenameToSequentialOrder(
+                        itemsToRename, showName, BuildFullPath, TransferMediaItemState
+                    );
+                }
+
+                if (renamedCount > 0)
+                {
+                    // Re-sync cached parsing on all list items
+                    foreach (ListViewItem lvi in listEpisodes.Items)
+                    {
+                        if (lvi.Tag is MediaItem m)
+                        {
+                            m.CacheParsed();
+                        }
+                    }
+
+                    // Save and merge state cleanly
+                    await Task.Run(() => SaveAndMergeState());
+                    RefreshAll();
+
+                    if (treeShows.SelectedNode != null)
+                    {
+                        TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(treeShows.SelectedNode));
+                    }
+
+                    MessageBox.Show($"Successfully renamed {renamedCount} episode(s) and preserved watch states!", "Rename Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show("No files were renamed.", "Rename Result", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Renaming failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                this.Cursor = Cursors.Default;
+            }
+        }
+
+
+
     }
 }

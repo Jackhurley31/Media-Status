@@ -83,6 +83,7 @@ namespace MediaControlApp.Forms
             btnRefresh = new Button();
             btnOrganiz = new Button();
             lblStatus = new Label();
+            BtnAutoRename = new Button();
             gbActions = new GroupBox();
             flowActionsInner = new FlowLayoutPanel();
             btnShutdownOptions = new Button();
@@ -391,6 +392,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Controls.Add(btnoptions);
             flowLayoutPanel1.Controls.Add(BtnFavourite);
             flowLayoutPanel1.Controls.Add(btnRefresh);
+            flowLayoutPanel1.Controls.Add(BtnAutoRename);
             flowLayoutPanel1.Controls.Add(btnOrganiz);
             flowLayoutPanel1.Controls.Add(lblStatus);
             flowLayoutPanel1.Dock = DockStyle.Fill;
@@ -436,7 +438,7 @@ namespace MediaControlApp.Forms
             // 
             btnOrganiz.AutoSize = true;
             btnOrganiz.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnOrganiz.Location = new Point(213, 3);
+            btnOrganiz.Location = new Point(321, 3);
             btnOrganiz.Name = "btnOrganiz";
             btnOrganiz.Size = new Size(97, 25);
             btnOrganiz.TabIndex = 3;
@@ -446,13 +448,23 @@ namespace MediaControlApp.Forms
             // lblStatus
             // 
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(316, 8);
+            lblStatus.Location = new Point(424, 8);
             lblStatus.Margin = new Padding(3, 8, 3, 0);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(19, 15);
             lblStatus.TabIndex = 4;
             lblStatus.Text = "---";
             lblStatus.Click += lblStatus_Click;
+            // 
+            // BtnAutoRename
+            // 
+            BtnAutoRename.Location = new Point(213, 3);
+            BtnAutoRename.Name = "BtnAutoRename";
+            BtnAutoRename.Size = new Size(102, 23);
+            BtnAutoRename.TabIndex = 5;
+            BtnAutoRename.Text = "Auto Rename";
+            BtnAutoRename.UseVisualStyleBackColor = true;
+            BtnAutoRename.Click += BtnAutoRename_Click;
             // 
             // gbActions
             // 
@@ -571,5 +583,6 @@ namespace MediaControlApp.Forms
         private CheckBox chkFullscreen;
         private PictureBox picPoster;
         private SplitContainer splitContainer1;
+        private Button BtnAutoRename;
     }
 }
