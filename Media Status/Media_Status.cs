@@ -1,6 +1,8 @@
 using Media_Status;
+using Media_Status.Properties;
 using MediaControlApp.Helpers;
 using MediaControlApp.Models;
+using MediaStatus;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -12,6 +14,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+
 using static MediaControlApp.OptionsForm;
 
 
@@ -58,6 +61,12 @@ namespace MediaControlApp.Forms
 
         private bool _userStoppedPlayback = false;
 
+
+
+
+
+
+
         public string RootFolder
         {
             get
@@ -68,6 +77,8 @@ namespace MediaControlApp.Forms
         }
 
         public string JsonPath => Path.Combine(RootFolder, "media_state.json");
+
+
 
 
         public MainForm()
@@ -2060,6 +2071,7 @@ namespace MediaControlApp.Forms
             ApplyButtonStyle(btnRefresh, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnOrganiz, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(BtnAutoRename, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+            ApplyButtonStyle(btnAutoRenameOptions, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
 
 
 
@@ -3463,7 +3475,7 @@ namespace MediaControlApp.Forms
 
             string targetName = inputPathOrName;
 
-            // 1. If a full path is passed, prefer extracting the top-level show folder name
+            // 1. Extract top-level show folder name if a full path is provided
             if (Path.IsPathRooted(inputPathOrName) || inputPathOrName.Contains(Path.DirectorySeparatorChar))
             {
                 string dirPath = Path.GetDirectoryName(inputPathOrName);
@@ -3471,7 +3483,7 @@ namespace MediaControlApp.Forms
                 {
                     var dirInfo = new DirectoryInfo(dirPath);
 
-                    // If inside a "Season XX" subfolder, go up one level to get the Show folder name
+                    // Navigate up one level if inside a Season subfolder
                     if (dirInfo.Name.StartsWith("Season", StringComparison.OrdinalIgnoreCase) ||
                         Regex.IsMatch(dirInfo.Name, @"(?i)^S\d+$"))
                     {
@@ -3485,33 +3497,25 @@ namespace MediaControlApp.Forms
             }
             else
             {
-                // 2. If given a file name without directory info, strip extension
+                // 2. Strip extension if given a single filename
                 targetName = Path.GetFileNameWithoutExtension(inputPathOrName);
             }
 
-            // Remove favorited star characters or symbol prefixes/suffixes
+            // Strip favorited star symbols and delimiters
             string cleaned = targetName.Replace("★", string.Empty)
-                                       .Replace("⭐", string.Empty);
+                                       .Replace("⭐", string.Empty)
+                                       .Replace('.', ' ')
+                                       .Replace('_', ' ')
+                                       .Replace('-', ' ');
 
-            // Replace dots, underscores, and dashes with spaces
-            cleaned = cleaned.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
-
-            // Strip common release quality and encoding patterns
-            string pattern = @"(?i)\b(1080p|720p|4k|2160p|x264|x265|hevc|webrip|web-dl|hdtv|bluray|aac|dts|5\.1|7\.1)\b";
+            // Strip quality, encoding, and release tags
+            string pattern = @"(?i)\b(1080p|720p|4k|2160p|h264|x264|h265|x265|hevc|web-dl|webrip|bluray|hdtv|xvid|aac|dts)\b";
             cleaned = Regex.Replace(cleaned, pattern, string.Empty);
 
-            // Strip bracketed metadata e.g. [Group], (2023)
-            cleaned = Regex.Replace(cleaned, @"\[.*?\]|\(.*?\)", string.Empty);
-
-            // Strip TV season/episode numbers if present
-            cleaned = Regex.Replace(cleaned, @"(?i)\bS\d+E\d+\b|\b\d+x\d+\b", string.Empty);
-
-            // Trim trailing whitespace and double spaces
-            cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
-
-            return cleaned;
+            // Clean up trailing brackets and whitespace
+            cleaned = Regex.Replace(cleaned, @"[\(\[].*?[\)\]]", string.Empty);
+            return Regex.Replace(cleaned, @"\s+", " ").Trim();
         }
-
 
 
 
@@ -3641,123 +3645,41 @@ namespace MediaControlApp.Forms
 
         private async void BtnAutoRename_Click(object sender, EventArgs e)
         {
-            List<MediaItem> itemsToRename = new();
-            string showName = string.Empty;
-
-            HashSet<string> categoryNodes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Watched", "Continue", "Films", "TV Shows", "All Shows", "Favorites"
-    };
-
-            if (listEpisodes.SelectedItems.Count > 0)
-            {
-                foreach (ListViewItem li in listEpisodes.SelectedItems)
-                {
-                    if (li.Tag is MediaItem ep) itemsToRename.Add(ep);
-                }
-                showName = itemsToRename.FirstOrDefault()?.CachedSeriesName;
-            }
-            else if (treeShows.SelectedNode != null)
-            {
-                TreeNode selectedNode = treeShows.SelectedNode;
-                itemsToRename = GetItemsFromNode(selectedNode);
-
-                TreeNode curr = selectedNode;
-                while (curr != null)
-                {
-                    string cleanedText = curr.Text.Replace("★ ", "").Trim();
-                    if (curr.Parent != null && categoryNodes.Contains(curr.Parent.Text.Trim()))
-                    {
-                        showName = cleanedText;
-                        break;
-                    }
-                    if (curr.Parent == null && !categoryNodes.Contains(cleanedText))
-                    {
-                        showName = cleanedText;
-                        break;
-                    }
-                    curr = curr.Parent;
-                }
-
-                if (string.IsNullOrWhiteSpace(showName))
-                {
-                    showName = selectedNode.Text.Replace("★ ", "").Trim();
-                }
-            }
-
-            if (itemsToRename.Count == 0 || string.IsNullOrWhiteSpace(showName))
-            {
-                MessageBox.Show("Please select an episode, season, or show to rename.", "Rename Episodes", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            DialogResult choice = MessageBox.Show(
-                $"Target Show: '{showName}' ({itemsToRename.Count} files)\n\n" +
-                "• Click [Yes] for Official Titles (TVmaze API).\n" +
-                "• Click [No] for Clean Sequential Order (Show - S01E01.ext).\n" +
-                "• Click [Cancel] to abort.",
-                "Choose Rename Mode",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Question
+            await EpisodeRenamer.ExecuteAutoRenameAsync(
+                this,
+                listEpisodes,
+                treeShows,
+                darkMode,
+                node => GetItemsFromNode(node),
+                path => BuildFullPath(path),
+                (item, oldPath, newPath) => TransferMediaItemState(item, oldPath, newPath),
+                async () => await SaveAndMergeState(),
+                () => RefreshAll(),
+                () => { if (treeShows.SelectedNode != null) TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(treeShows.SelectedNode)); }
             );
+        }
 
-            if (choice == DialogResult.Cancel) return;
 
-            this.Cursor = Cursors.WaitCursor;
 
-            try
+        private void btnAutoRenameOptions_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new AutoRenameSettingsForm(darkMode))
             {
-                int renamedCount = 0;
-
-                if (choice == DialogResult.Yes)
+                if (settingsForm.ShowDialog(this) == DialogResult.OK)
                 {
-                    renamedCount = await EpisodeRenamer.AutoRenameEpisodesAsync(
-                        itemsToRename, showName, BuildFullPath, TransferMediaItemState
-                    );
+                    // Persist values to Properties.Settings
+                    Settings.Default.RenameFormatPattern = settingsForm.CustomFormatPattern;
+                    Settings.Default.RenameIncludeShow = settingsForm.IncludeShow;
+                    Settings.Default.RenamePadNumbers = settingsForm.PadNumbers;
+                    Settings.Default.RenameReplaceWithSpaces = settingsForm.ReplaceWithSpaces;
+                    Settings.Default.RenameReplaceDots = settingsForm.ReplaceDots;
+                    Settings.Default.RenameRemoveSpecial = settingsForm.RemoveSpecial;
+                    Settings.Default.Save();
                 }
-                else if (choice == DialogResult.No)
-                {
-                    renamedCount = EpisodeRenamer.RenameToSequentialOrder(
-                        itemsToRename, showName, BuildFullPath, TransferMediaItemState
-                    );
-                }
-
-                if (renamedCount > 0)
-                {
-                    // Re-sync cached parsing on all list items
-                    foreach (ListViewItem lvi in listEpisodes.Items)
-                    {
-                        if (lvi.Tag is MediaItem m)
-                        {
-                            m.CacheParsed();
-                        }
-                    }
-
-                    // Save and merge state cleanly
-                    await Task.Run(() => SaveAndMergeState());
-                    RefreshAll();
-
-                    if (treeShows.SelectedNode != null)
-                    {
-                        TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(treeShows.SelectedNode));
-                    }
-
-                    MessageBox.Show($"Successfully renamed {renamedCount} episode(s) and preserved watch states!", "Rename Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                else
-                {
-                    MessageBox.Show("No files were renamed.", "Rename Result", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Renaming failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                this.Cursor = Cursors.Default;
             }
         }
+
+
 
 
 

@@ -1,166 +1,337 @@
-﻿using System;
+﻿using Media_Status;
+using MediaControlApp.Models;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using MediaControlApp.Models;
+using System.Windows.Forms;
 
-namespace MediaControlApp.Helpers
+public static class EpisodeRenamer
 {
-    public static class EpisodeRenamer
+    public static async Task ExecuteAutoRenameAsync(
+        Form parentForm,
+        ListView listEpisodes,
+        TreeView treeShows,
+        bool darkMode,
+        Func<TreeNode, List<MediaItem>> getItemsFromNode,
+        Func<string, string> buildFullPath,
+        Action<MediaItem, string, string> transferState,
+        Func<Task> saveAndMergeState,
+        Action refreshAll,
+        Action refreshNodeSelection)
     {
-        private static readonly HttpClient _httpClient = new HttpClient();
+        List<MediaItem> itemsToRename = new();
+        string showName = string.Empty;
 
-        static EpisodeRenamer()
+        HashSet<string> categoryNodes = new(StringComparer.OrdinalIgnoreCase)
         {
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
+            "Watched", "Continue", "Films", "TV Shows", "All Shows", "Favorites"
+        };
+
+        // 1. Check selected items in list view
+        if (listEpisodes.SelectedItems.Count > 0)
+        {
+            foreach (ListViewItem li in listEpisodes.SelectedItems)
+            {
+                if (li.Tag is MediaItem ep) itemsToRename.Add(ep);
+            }
+            showName = itemsToRename.FirstOrDefault()?.CachedSeriesName;
+        }
+        // 2. Check selected tree node if nothing selected in list
+        else if (treeShows.SelectedNode != null)
+        {
+            TreeNode selectedNode = treeShows.SelectedNode;
+            itemsToRename = getItemsFromNode(selectedNode);
+
+            TreeNode curr = selectedNode;
+            while (curr != null)
+            {
+                string cleanedText = curr.Text.Replace("★ ", "").Trim();
+                if (curr.Parent != null && categoryNodes.Contains(curr.Parent.Text.Trim()))
+                {
+                    showName = cleanedText;
+                    break;
+                }
+                if (curr.Parent == null && !categoryNodes.Contains(cleanedText))
+                {
+                    showName = cleanedText;
+                    break;
+                }
+                curr = curr.Parent;
+            }
+
+            if (string.IsNullOrWhiteSpace(showName))
+            {
+                showName = selectedNode.Text.Replace("★ ", "").Trim();
+            }
         }
 
-        public static async Task<Dictionary<(int Season, int Episode), string>> FetchEpisodeTitlesTvMazeAsync(string showName)
+        // 3. Fallback: If still empty, automatically grab all items currently visible in the list view
+        if (itemsToRename.Count == 0 && listEpisodes.Items.Count > 0)
         {
-            var episodeMap = new Dictionary<(int Season, int Episode), string>();
+            foreach (ListViewItem li in listEpisodes.Items)
+            {
+                if (li.Tag is MediaItem ep) itemsToRename.Add(ep);
+            }
+        }
+
+        // Fallback show name from first item if empty
+        if (string.IsNullOrWhiteSpace(showName) && itemsToRename.Count > 0)
+        {
+            showName = itemsToRename.First().CachedSeriesName;
+            if (string.IsNullOrWhiteSpace(showName))
+            {
+                string firstPath = buildFullPath(itemsToRename.First().FilePath);
+                showName = Path.GetFileNameWithoutExtension(firstPath);
+                var matchCheck = Regex.Match(showName, @"^(.*?)(?:\W+S\d+E\d+|\W+\d+x\d+)", RegexOptions.IgnoreCase);
+                if (matchCheck.Success) showName = matchCheck.Groups[1].Value.Replace(".", " ").Trim();
+            }
+        }
+
+        if (itemsToRename.Count == 0 || string.IsNullOrWhiteSpace(showName))
+        {
+            DarkMessageBox.Show(parentForm, "No items found to rename.", "Rename Episodes", MessageBoxButtons.OK, darkMode);
+            return;
+        }
+
+        var confirmResult = DarkMessageBox.Show(parentForm, $"Are you sure you want to auto-rename {itemsToRename.Count} item(s) for '{showName}'?", "Confirm Auto-Rename", MessageBoxButtons.YesNo, darkMode);
+        if (confirmResult != DialogResult.Yes) return;
+
+        // Load settings
+        string rawPattern = Media_Status.Properties.Settings.Default.RenameFormatPattern;
+        string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
+
+        bool includeShow = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameIncludeShow, true);
+        bool padNumbers = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenamePadNumbers, true);
+        bool replaceWithSpaces = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameReplaceWithSpaces, false);
+        bool replaceDots = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameReplaceDots, false);
+        bool removeSpecial = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameRemoveSpecial, true);
+
+        parentForm.Cursor = Cursors.WaitCursor;
+
+        try
+        {
+            // Normalize show name for API query
+            string processedShowName = showName.Replace(".", " ");
+            string cleanShowNameForApi = Regex.Replace(processedShowName, @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|x264|x265|HEVC|10bit|8bit|\d+CH|PSA|FENIX|EZTV)\b", "", RegexOptions.IgnoreCase);
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\bS\d+E\d+\b", "").Trim();
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\b\d+x\d+\b", "").Trim();
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"[\.\-_]+", " ").Trim();
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\s+", " ");
+
+            bool apiSuccess = false;
+            var episodeDict = new Dictionary<(int Season, int Episode), string>();
 
             try
             {
-                string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(showName)}&embed=episodes";
-                HttpResponseMessage response = await _httpClient.GetAsync(searchUrl);
-
-                if (!response.IsSuccessStatusCode) return episodeMap;
-
-                string json = await response.Content.ReadAsStringAsync();
-                using var doc = JsonDocument.Parse(json);
-
-                if (doc.RootElement.TryGetProperty("_embedded", out var embedded) &&
-                    embedded.TryGetProperty("episodes", out var episodes))
+                using (HttpClient client = new HttpClient())
                 {
-                    foreach (var ep in episodes.EnumerateArray())
+                    client.Timeout = TimeSpan.FromSeconds(4);
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
+
+                    string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(cleanShowNameForApi)}&embed=episodes";
+                    HttpResponseMessage response = await client.GetAsync(searchUrl);
+
+                    if (!response.IsSuccessStatusCode && Regex.IsMatch(cleanShowNameForApi, @"\(\d{4}\)|\b\d{4}\b"))
                     {
-                        if (ep.TryGetProperty("season", out var sProp) && sProp.TryGetInt32(out int season) &&
-                            ep.TryGetProperty("number", out var eProp) && eProp.TryGetInt32(out int episode) &&
-                            ep.TryGetProperty("name", out var nameProp) && nameProp.GetString() is string title)
+                        string nameWithoutYear = Regex.Replace(cleanShowNameForApi, @"\(\d{4}\)", "");
+                        nameWithoutYear = Regex.Replace(nameWithoutYear, @"\b\d{4}\b", "").Trim();
+                        string fallbackSearchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(nameWithoutYear)}&embed=episodes";
+                        response = await client.GetAsync(fallbackSearchUrl);
+                    }
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = await response.Content.ReadAsStringAsync();
+                        using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
                         {
-                            if (!string.IsNullOrWhiteSpace(title))
-                                episodeMap[(season, episode)] = CleanFileName(title);
+                            if (doc.RootElement.TryGetProperty("_embedded", out var embedded) &&
+                                embedded.TryGetProperty("episodes", out var episodesArray))
+                            {
+                                foreach (var epElem in episodesArray.EnumerateArray())
+                                {
+                                    if (epElem.TryGetProperty("season", out var sProp) && epElem.TryGetProperty("number", out var nProp))
+                                    {
+                                        if (nProp.ValueKind == JsonValueKind.Number)
+                                        {
+                                            int s = sProp.GetInt32();
+                                            int eNum = nProp.GetInt32();
+                                            string epName = epElem.GetProperty("name").GetString() ?? "";
+                                            episodeDict[(s, eNum)] = epName;
+                                        }
+                                    }
+                                }
+                                apiSuccess = true;
+                            }
                         }
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"Error fetching TVmaze titles: {ex.Message}");
+                // Fallback gracefully to local rules if API fails
             }
-
-            return episodeMap;
-        }
-
-        public static async Task<int> AutoRenameEpisodesAsync(
-            List<MediaItem> episodes,
-            string showName,
-            Func<string, string> buildFullPathFunc,
-            Action<MediaItem, string, string> updateStateAction = null)
-        {
-            if (episodes == null || episodes.Count == 0 || string.IsNullOrWhiteSpace(showName))
-                return 0;
-
-            var officialTitles = await FetchEpisodeTitlesTvMazeAsync(showName);
-            int renamedCount = 0;
-
-            foreach (var ep in episodes)
-            {
-                int season = ep.CachedSeason;
-                int episode = ep.CachedEpisode;
-
-                string oldFullPath = buildFullPathFunc(ep.FilePath);
-                if (!File.Exists(oldFullPath)) continue;
-
-                string folder = Path.GetDirectoryName(oldFullPath);
-                string ext = Path.GetExtension(oldFullPath);
-
-                string title = officialTitles.TryGetValue((season, episode), out var t) ? t : $"Episode {episode}";
-                string newFileName = $"{showName} - S{season:D2}E{episode:D2} - {title}{ext}";
-                string newFullPath = Path.Combine(folder, newFileName);
-
-                if (string.Equals(oldFullPath, newFullPath, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                try
-                {
-                    if (!File.Exists(newFullPath))
-                    {
-                        File.Move(oldFullPath, newFullPath);
-
-                        // Transfer state mapping (re-keys dictionaries and updates MediaItem path)
-                        updateStateAction?.Invoke(ep, oldFullPath, newFullPath);
-
-                        renamedCount++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to rename {oldFullPath}: {ex.Message}");
-                }
-            }
-
-            return renamedCount;
-        }
-
-        public static int RenameToSequentialOrder(
-            List<MediaItem> episodes,
-            string showName,
-            Func<string, string> buildFullPathFunc,
-            Action<MediaItem, string, string> updateStateAction = null)
-        {
-            if (episodes == null || episodes.Count == 0 || string.IsNullOrWhiteSpace(showName))
-                return 0;
 
             int renamedCount = 0;
 
-            foreach (var ep in episodes)
+            foreach (var item in itemsToRename)
             {
-                int season = ep.CachedSeason;
-                int episode = ep.CachedEpisode;
-
-                string oldFullPath = buildFullPathFunc(ep.FilePath);
-                if (!File.Exists(oldFullPath)) continue;
-
-                string folder = Path.GetDirectoryName(oldFullPath);
-                string ext = Path.GetExtension(oldFullPath);
-
-                string newFileName = $"{showName} - S{season:D2}E{episode:D2}{ext}";
-                string newFullPath = Path.Combine(folder, newFileName);
-
-                if (string.Equals(oldFullPath, newFullPath, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
                 try
                 {
-                    if (!File.Exists(newFullPath))
+                    string oldFullPath = buildFullPath(item.FilePath);
+                    if (string.IsNullOrWhiteSpace(oldFullPath) || !File.Exists(oldFullPath)) continue;
+
+                    string fileNameOnly = Path.GetFileNameWithoutExtension(oldFullPath);
+                    if (fileNameOnly.Contains("special", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    item.CacheParsed();
+                    int season = item.CachedSeason;
+                    int episode = item.CachedEpisode;
+
+                    if (season <= 0 || episode <= 0)
+                    {
+                        var seMatch = Regex.Match(fileNameOnly, @"(?:S(\d+)\s*E(\d+))|(?:(\d+)x(\d+))", RegexOptions.IgnoreCase);
+                        if (seMatch.Success)
+                        {
+                            if (seMatch.Groups[1].Success && seMatch.Groups[2].Success)
+                            {
+                                int.TryParse(seMatch.Groups[1].Value, out season);
+                                int.TryParse(seMatch.Groups[2].Value, out episode);
+                            }
+                            else if (seMatch.Groups[3].Success && seMatch.Groups[4].Success)
+                            {
+                                int.TryParse(seMatch.Groups[3].Value, out season);
+                                int.TryParse(seMatch.Groups[4].Value, out episode);
+                            }
+                        }
+                    }
+
+                    string epTitle = string.Empty;
+                    if (apiSuccess && episodeDict.TryGetValue((season, episode), out string matchedTitle) && !string.IsNullOrWhiteSpace(matchedTitle))
+                    {
+                        epTitle = matchedTitle;
+                    }
+                    else
+                    {
+                        string cleaned = fileNameOnly.Replace(".", " ");
+                        cleaned = Regex.Replace(cleaned, @"\[.*?\]", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"\(.*?\)", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|x264|x265|HEVC|10bit|8bit|\d+CH|PSA|FENIX|EZTV)\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @$"(?i)\b{Regex.Escape(showName.Replace(".", " "))}\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"(?i)\bS\d+E\d+\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"(?i)\b\d+x\d+\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"[\.\-_]+", " ");
+                        epTitle = Regex.Replace(cleaned, @"\s+", " ").Trim();
+
+                        if (string.IsNullOrWhiteSpace(epTitle) || epTitle.Equals(showName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            epTitle = episode > 0 ? $"Episode {episode}" : fileNameOnly;
+                        }
+                    }
+
+                    string directory = Path.GetDirectoryName(oldFullPath);
+                    string ext = Path.GetExtension(oldFullPath);
+
+                    string seasonStr = padNumbers && season > 0 ? season.ToString("D2") : (season > 0 ? season.ToString() : "01");
+                    string episodeStr = padNumbers && episode > 0 ? episode.ToString("D2") : (episode > 0 ? episode.ToString() : "01");
+
+                    string formattedName = formatPattern;
+
+                    if (includeShow && !string.IsNullOrWhiteSpace(showName))
+                    {
+                        formattedName = formattedName.Replace("{Show}", showName);
+                    }
+                    else
+                    {
+                        formattedName = formattedName.Replace("{Show}", "").Trim();
+                        formattedName = Regex.Replace(formattedName, @"^[\s\-\._]+", "");
+                    }
+
+                    formattedName = formattedName
+                        .Replace("{Season}", seasonStr)
+                        .Replace("{Episode}", episodeStr)
+                        .Replace("{Title}", epTitle);
+
+                    if (replaceWithSpaces) formattedName = formattedName.Replace('_', ' ');
+                    if (replaceDots) formattedName = formattedName.Replace('.', ' ');
+
+                    if (removeSpecial)
+                    {
+                        foreach (char c in Path.GetInvalidFileNameChars())
+                        {
+                            formattedName = formattedName.Replace(c.ToString(), "");
+                        }
+                    }
+
+                    string newFileName = Regex.Replace(formattedName, @"\s+", " ").Trim() + ext;
+                    string newFullPath = Path.Combine(directory, newFileName);
+
+                    if (oldFullPath.Equals(newFullPath, StringComparison.Ordinal)) continue;
+
+                    if (File.Exists(newFullPath))
+                    {
+                        if (oldFullPath.Equals(newFullPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string tempPath = oldFullPath + ".tmp_" + Guid.NewGuid().ToString("N");
+                            File.Move(oldFullPath, tempPath);
+                            File.Move(tempPath, newFullPath);
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    else
                     {
                         File.Move(oldFullPath, newFullPath);
-
-                        // Transfer state mapping (re-keys dictionaries and updates MediaItem path)
-                        updateStateAction?.Invoke(ep, oldFullPath, newFullPath);
-
-                        renamedCount++;
                     }
+
+                    transferState(item, oldFullPath, newFullPath);
+                    item.FilePath = newFullPath;
+                    item.CacheParsed();
+                    renamedCount++;
                 }
-                catch (Exception ex)
+                catch (Exception innerEx)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Sequential rename failed: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[RenameError] {innerEx.Message}");
                 }
             }
 
-            return renamedCount;
-        }
+            if (renamedCount > 0)
+            {
+                foreach (ListViewItem lvi in listEpisodes.Items)
+                {
+                    if (lvi.Tag is MediaItem m) m.CacheParsed();
+                }
 
-        private static string CleanFileName(string title)
-        {
-            string invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
-            string invalidRegStr = string.Format(@"[{0}]", invalidChars);
-            return Regex.Replace(title, invalidRegStr, "").Trim();
+                await saveAndMergeState();
+                refreshAll();
+                refreshNodeSelection();
+
+                string msg = apiSuccess ? "Successfully renamed files using API data!" : "Successfully cleaned up files using local rules!";
+                DarkMessageBox.Show(parentForm, $"{msg} ({renamedCount} file(s) updated).", "Auto-Rename Complete", MessageBoxButtons.OK, darkMode);
+            }
+            else
+            {
+                DarkMessageBox.Show(parentForm, "No valid files needed renaming or matches were found.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
+            }
         }
+        catch (Exception ex)
+        {
+            DarkMessageBox.Show(parentForm, $"Error during auto-rename: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+        }
+        finally
+        {
+            parentForm.Cursor = Cursors.Default;
+        }
+    }
+
+    private static bool GetSettingSafe(Func<bool> settingGetter, bool fallback)
+    {
+        try { return settingGetter(); }
+        catch { return fallback; }
     }
 }

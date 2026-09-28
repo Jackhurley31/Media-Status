@@ -84,6 +84,7 @@ namespace MediaControlApp.Forms
             btnOrganiz = new Button();
             lblStatus = new Label();
             BtnAutoRename = new Button();
+            btnAutoRenameOptions = new Button();
             gbActions = new GroupBox();
             flowActionsInner = new FlowLayoutPanel();
             btnShutdownOptions = new Button();
@@ -120,7 +121,7 @@ namespace MediaControlApp.Forms
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
-            splitMain.Size = new Size(1231, 566);
+            splitMain.Size = new Size(1231, 557);
             splitMain.SplitterDistance = 354;
             splitMain.TabIndex = 0;
             // 
@@ -138,8 +139,8 @@ namespace MediaControlApp.Forms
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
-            splitContainer1.Size = new Size(354, 566);
-            splitContainer1.SplitterDistance = 211;
+            splitContainer1.Size = new Size(354, 557);
+            splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
             // picPoster
@@ -149,7 +150,7 @@ namespace MediaControlApp.Forms
             picPoster.Location = new Point(0, 0);
             picPoster.Margin = new Padding(0);
             picPoster.Name = "picPoster";
-            picPoster.Size = new Size(354, 211);
+            picPoster.Size = new Size(354, 207);
             picPoster.SizeMode = PictureBoxSizeMode.Zoom;
             picPoster.TabIndex = 1;
             picPoster.TabStop = false;
@@ -161,7 +162,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(354, 351);
+            treeShows.Size = new Size(354, 346);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -174,7 +175,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(873, 566);
+            listEpisodes.Size = new Size(873, 557);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -223,12 +224,12 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 566);
+            layoutBottomPanel.Location = new Point(0, 557);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(1231, 94);
+            layoutBottomPanel.Size = new Size(1231, 103);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -392,13 +393,14 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Controls.Add(btnoptions);
             flowLayoutPanel1.Controls.Add(BtnFavourite);
             flowLayoutPanel1.Controls.Add(btnRefresh);
-            flowLayoutPanel1.Controls.Add(BtnAutoRename);
             flowLayoutPanel1.Controls.Add(btnOrganiz);
             flowLayoutPanel1.Controls.Add(lblStatus);
+            flowLayoutPanel1.Controls.Add(btnAutoRenameOptions);
+            flowLayoutPanel1.Controls.Add(BtnAutoRename);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(3, 40);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(609, 51);
+            flowLayoutPanel1.Size = new Size(609, 60);
             flowLayoutPanel1.TabIndex = 2;
             // 
             // btnoptions
@@ -438,7 +440,7 @@ namespace MediaControlApp.Forms
             // 
             btnOrganiz.AutoSize = true;
             btnOrganiz.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnOrganiz.Location = new Point(321, 3);
+            btnOrganiz.Location = new Point(213, 3);
             btnOrganiz.Name = "btnOrganiz";
             btnOrganiz.Size = new Size(97, 25);
             btnOrganiz.TabIndex = 3;
@@ -448,7 +450,8 @@ namespace MediaControlApp.Forms
             // lblStatus
             // 
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(424, 8);
+            flowLayoutPanel1.SetFlowBreak(lblStatus, true);
+            lblStatus.Location = new Point(316, 8);
             lblStatus.Margin = new Padding(3, 8, 3, 0);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(19, 15);
@@ -458,13 +461,24 @@ namespace MediaControlApp.Forms
             // 
             // BtnAutoRename
             // 
-            BtnAutoRename.Location = new Point(213, 3);
+            BtnAutoRename.Location = new Point(162, 34);
             BtnAutoRename.Name = "BtnAutoRename";
             BtnAutoRename.Size = new Size(102, 23);
             BtnAutoRename.TabIndex = 5;
             BtnAutoRename.Text = "Auto Rename";
             BtnAutoRename.UseVisualStyleBackColor = true;
             BtnAutoRename.Click += BtnAutoRename_Click;
+            // 
+            // btnAutoRenameOptions
+            // 
+            btnAutoRenameOptions.Location = new Point(3, 34);
+            btnAutoRenameOptions.Name = "btnAutoRenameOptions";
+            btnAutoRenameOptions.RightToLeft = RightToLeft.No;
+            btnAutoRenameOptions.Size = new Size(153, 23);
+            btnAutoRenameOptions.TabIndex = 6;
+            btnAutoRenameOptions.Text = "Auto Rename options";
+            btnAutoRenameOptions.UseVisualStyleBackColor = true;
+            btnAutoRenameOptions.Click += btnAutoRenameOptions_Click;
             // 
             // gbActions
             // 
@@ -474,7 +488,7 @@ namespace MediaControlApp.Forms
             gbActions.Dock = DockStyle.Fill;
             gbActions.Location = new Point(618, 40);
             gbActions.Name = "gbActions";
-            gbActions.Size = new Size(610, 51);
+            gbActions.Size = new Size(610, 60);
             gbActions.TabIndex = 3;
             gbActions.TabStop = false;
             gbActions.Text = "Actions";
@@ -490,7 +504,7 @@ namespace MediaControlApp.Forms
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
-            flowActionsInner.Size = new Size(604, 31);
+            flowActionsInner.Size = new Size(604, 40);
             flowActionsInner.TabIndex = 0;
             // 
             // btnShutdownOptions
@@ -584,5 +598,6 @@ namespace MediaControlApp.Forms
         private PictureBox picPoster;
         private SplitContainer splitContainer1;
         private Button BtnAutoRename;
+        private Button btnAutoRenameOptions;
     }
 }
