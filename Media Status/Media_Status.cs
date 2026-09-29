@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -255,6 +256,29 @@ namespace MediaControlApp.Forms
             }
 
             chkFullscreen.Checked = _userSettings.EnableFullscreen;
+
+
+
+            splitContainer1.FixedPanel = FixedPanel.Panel1;
+
+            if (_userSettings != null)
+            {
+                // Set outer split first
+                if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
+                {
+                    splitMain.SplitterDistance = _userSettings.SplitMainDistance;
+                }
+
+                // Then set inner split
+                if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
+                {
+                    splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
+                }
+            }
+
+
+
+
         }
 
 
@@ -3024,6 +3048,17 @@ namespace MediaControlApp.Forms
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
+            // Save current split panel distances before closing
+            if (_userSettings != null)
+            {
+                _userSettings.SplitMainDistance = splitMain.SplitterDistance;
+                _userSettings.SplitContainer1Distance = splitContainer1.SplitterDistance;
+
+                AppConfig.Save(_userSettings); // Saves to app_settings.json[cite: 3]
+            }
+
+
+
             // Check if VLC process is currently running/playing
             bool isPlaying = currentPlayingProcess != null && !currentPlayingProcess.HasExited;
 
