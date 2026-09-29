@@ -856,6 +856,14 @@ namespace MediaControlApp.Forms
             {
                 currentEpisodes = seasonItems;
                 LoadEpisodes(currentEpisodes);
+
+                // Auto-resize columns to fit both the column header AND the longest item text
+                foreach (ColumnHeader column in listEpisodes.Columns)
+                {
+                    column.Width = -2; // -2 automatically sizes to fit the header and contents perfectly
+                }
+
+
                 UpdateButtonStates();
 
             }
