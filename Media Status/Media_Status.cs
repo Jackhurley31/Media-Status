@@ -588,12 +588,9 @@ namespace MediaControlApp.Forms
                 TreeNode topRecentlyAddedNode = null;
                 DateTime thirtyDaysAgo = DateTime.Now.AddDays(-30);
 
-                // Filter items modified within last 30 days using in-memory cached property
+                // Filter individual items modified within the last 30 days that are unwatched
                 var recentTvItems = tvItems
-                    .Where(i => i.CachedDateModified >= thirtyDaysAgo)
-                    .GroupBy(i => i.CachedSeriesName)
-                    .Where(g => !g.Any(ep => ep.IsWatched(AppConfig.CurrentUser))) // Exclude if user started or finished watching
-                    .SelectMany(g => g)
+                    .Where(i => i.CachedDateModified >= thirtyDaysAgo && !i.IsWatched(AppConfig.CurrentUser))
                     .ToList();
 
                 if (recentTvItems.Any())
@@ -611,19 +608,13 @@ namespace MediaControlApp.Forms
                         if (string.IsNullOrWhiteSpace(show.Key)) continue;
 
                         string showNameClean = show.Key;
-
-                        // Filter out seasons if any episode within that season was watched
-                        var unstartedSeasons = show
-                            .GroupBy(i => i.CachedSeason)
-                            .Where(s => !s.Any(ep => ep.IsWatched(AppConfig.CurrentUser)))
-                            .OrderBy(g => g.Key)
-                            .ToList();
-
-                        if (!unstartedSeasons.Any()) continue;
-
                         var showNode = topRecentlyAddedNode.Nodes.Add(showNameClean);
 
-                        foreach (var season in unstartedSeasons)
+                        var seasons = show
+                            .GroupBy(i => i.CachedSeason)
+                            .OrderBy(g => g.Key);
+
+                        foreach (var season in seasons)
                         {
                             string seasonLabel = "Season " + season.Key;
                             var seasonNode = showNode.Nodes.Add(seasonLabel);
