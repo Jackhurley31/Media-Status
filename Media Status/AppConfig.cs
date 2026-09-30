@@ -1,10 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using Microsoft.Win32; // Added for Registry access
+using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace Media_Status
 {
+
+
     public class UserSettings
     {
         public bool DarkMode { get; set; } = true;
@@ -25,14 +29,19 @@ namespace Media_Status
 
     public static class AppConfig
     {
-        public static string CurrentUser => Environment.UserName;
-
         private static readonly string AppDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MediaControlApp"
-        );
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MediaControlApp"
+                );
 
-        public static readonly string ConfigFilePath = Path.Combine(AppDataFolder, "app_settings.json");
+        // users.json will live in the folder where the tool is running
+        public static readonly string UsersFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "users.json");
+
+        // Settings files will stay in Local AppData
+        public static string ConfigFilePath => Path.Combine(AppDataFolder, $"app_settings_{CurrentUser.ToLowerInvariant()}.json");
+
+        public static string CurrentUser { get; private set; } = Environment.UserName;
+
         private static readonly string DefaultVlcPath = @"C:\Program Files\VideoLAN\VLC\vlc.exe";
         private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
         private const string AppName = "MediaStatusApp";
@@ -45,6 +54,94 @@ namespace Media_Status
             }
         }
 
+        /// <summary>
+        /// Checks if any users exist. If not, prompts the setup dialog.
+        /// Returns true if a user session is active, false if cancelled.
+        /// </summary>
+        public static bool InitializeUserSession()
+        {
+            EnsureDirectoryExists();
+            UserDatabase db = LoadUserDatabase();
+
+            if (db.Users == null)
+            {
+                db.Users = new List<UserProfile>();
+            }
+
+            // Match the profile name to the current Windows computer user
+            string windowsUser = Environment.UserName;
+
+            // Check if this Windows user exists in the shared NAS users.json file
+            bool userExists = db.Users.Exists(u => u.Username.Equals(windowsUser, StringComparison.OrdinalIgnoreCase));
+
+            if (!userExists)
+            {
+                // If this computer's user isn't registered yet, prompt to create/set up their profile
+                using (var setupForm = new UserSetupForm())
+                {
+                    if (setupForm.ShowDialog() == DialogResult.OK)
+                    {
+                        string chosenUser = string.IsNullOrWhiteSpace(setupForm.SelectedUsername) ? windowsUser : setupForm.SelectedUsername.Trim();
+
+                        if (!db.Users.Exists(u => u.Username.Equals(chosenUser, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            db.Users.Add(new UserProfile { Username = chosenUser, IsDefault = false });
+                        }
+
+                        db.ActiveUser = chosenUser;
+                        SaveUserDatabase(db);
+                        CurrentUser = chosenUser;
+                    }
+                    else
+                    {
+                        return false; // User cancelled setup
+                    }
+                }
+            }
+            else
+            {
+                // Automatically lock/select the profile matching this Windows computer user
+                CurrentUser = windowsUser;
+
+                // Optionally update active user in db so it reflects accurately
+                db.ActiveUser = windowsUser;
+                SaveUserDatabase(db);
+            }
+
+            return true;
+        }
+
+        public static UserDatabase LoadUserDatabase()
+        {
+            try
+            {
+                if (File.Exists(UsersFilePath))
+                {
+                    string json = File.ReadAllText(UsersFilePath);
+                    return JsonSerializer.Deserialize<UserDatabase>(json) ?? new UserDatabase();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load users: {ex.Message}");
+            }
+
+            return new UserDatabase();
+        }
+
+        public static void SaveUserDatabase(UserDatabase db)
+        {
+            try
+            {
+                EnsureDirectoryExists();
+                string json = JsonSerializer.Serialize(db, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(UsersFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to save users: {ex.Message}");
+            }
+        }
 
         public static void SyncStartupPath(UserSettings settings)
         {
@@ -54,6 +151,43 @@ namespace Media_Status
                 SetStartupRegistry(true);
             }
         }
+
+
+        /// <summary>
+        /// Switches the active user, saves the database, and returns the updated username.
+        /// </summary>
+        public static void SwitchUser(string username)
+        {
+            UserDatabase db = LoadUserDatabase();
+
+            // If the user doesn't exist in the list yet, add them
+            if (!db.Users.Exists(u => u.Username.Equals(username, StringComparison.OrdinalIgnoreCase)))
+            {
+                db.Users.Add(new UserProfile { Username = username, IsDefault = false });
+            }
+
+            db.ActiveUser = username;
+            SaveUserDatabase(db);
+
+            // Update the runtime property
+            CurrentUser = username;
+        }
+
+        /// <summary>
+        /// Gets a list of all registered usernames.
+        /// </summary>
+        public static List<string> GetAllUsernames()
+        {
+            UserDatabase db = LoadUserDatabase();
+            List<string> names = new List<string>();
+            foreach (var user in db.Users)
+            {
+                names.Add(user.Username);
+            }
+            return names;
+        }
+
+
 
 
 
@@ -139,7 +273,7 @@ namespace Media_Status
                     {
                         if (enable)
                         {
-                            string executablePath = System.Windows.Forms.Application.ExecutablePath;
+                            string executablePath = Application.ExecutablePath;
                             key.SetValue(AppName, $"\"{executablePath}\"");
                         }
                         else

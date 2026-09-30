@@ -91,6 +91,7 @@ namespace MediaControlApp.Forms
             chkSubtitles = new CheckBox();
             cmbScreens = new ComboBox();
             chkFullscreen = new CheckBox();
+            BtnSwitchUser = new Button();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -111,7 +112,7 @@ namespace MediaControlApp.Forms
             // splitMain
             // 
             splitMain.Dock = DockStyle.Fill;
-            splitMain.FixedPanel = FixedPanel.Panel1; // Locks the left sidebar width
+            splitMain.FixedPanel = FixedPanel.Panel1;
             splitMain.Location = new Point(0, 0);
             splitMain.Name = "splitMain";
             // 
@@ -499,6 +500,7 @@ namespace MediaControlApp.Forms
             // 
             flowActionsInner.AutoSize = true;
             flowActionsInner.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            flowActionsInner.Controls.Add(BtnSwitchUser);
             flowActionsInner.Controls.Add(btnShutdownOptions);
             flowActionsInner.Controls.Add(chkSubtitles);
             flowActionsInner.Controls.Add(cmbScreens);
@@ -513,7 +515,7 @@ namespace MediaControlApp.Forms
             // 
             btnShutdownOptions.AutoSize = true;
             btnShutdownOptions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnShutdownOptions.Location = new Point(3, 3);
+            btnShutdownOptions.Location = new Point(95, 3);
             btnShutdownOptions.Name = "btnShutdownOptions";
             btnShutdownOptions.Size = new Size(90, 25);
             btnShutdownOptions.TabIndex = 0;
@@ -523,7 +525,7 @@ namespace MediaControlApp.Forms
             // chkSubtitles
             // 
             chkSubtitles.AutoSize = true;
-            chkSubtitles.Location = new Point(104, 6);
+            chkSubtitles.Location = new Point(196, 6);
             chkSubtitles.Margin = new Padding(8, 6, 3, 3);
             chkSubtitles.Name = "chkSubtitles";
             chkSubtitles.Size = new Size(76, 19);
@@ -535,7 +537,7 @@ namespace MediaControlApp.Forms
             // cmbScreens
             // 
             cmbScreens.FormattingEnabled = true;
-            cmbScreens.Location = new Point(186, 3);
+            cmbScreens.Location = new Point(278, 3);
             cmbScreens.Name = "cmbScreens";
             cmbScreens.Size = new Size(151, 23);
             cmbScreens.TabIndex = 2;
@@ -546,7 +548,7 @@ namespace MediaControlApp.Forms
             chkFullscreen.AutoSize = true;
             chkFullscreen.Checked = true;
             chkFullscreen.CheckState = CheckState.Checked;
-            chkFullscreen.Location = new Point(348, 6);
+            chkFullscreen.Location = new Point(440, 6);
             chkFullscreen.Margin = new Padding(8, 6, 3, 3);
             chkFullscreen.Name = "chkFullscreen";
             chkFullscreen.Size = new Size(85, 19);
@@ -554,6 +556,17 @@ namespace MediaControlApp.Forms
             chkFullscreen.Text = "Fullscreen";
             chkFullscreen.UseVisualStyleBackColor = true;
             chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
+            // 
+            // BtnSwitchUser
+            // 
+            BtnSwitchUser.AutoSize = true;
+            BtnSwitchUser.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            BtnSwitchUser.Location = new Point(3, 3);
+            BtnSwitchUser.Name = "BtnSwitchUser";
+            BtnSwitchUser.Size = new Size(86, 25);
+            BtnSwitchUser.TabIndex = 4;
+            BtnSwitchUser.Text = "Switch User";
+            BtnSwitchUser.Click += BtnSwitchUser_Click;
             // 
             // MainForm
             // 
@@ -601,5 +614,6 @@ namespace MediaControlApp.Forms
         private SplitContainer splitContainer1;
         private Button BtnAutoRename;
         private Button btnAutoRenameOptions;
+        private Button BtnSwitchUser;
     }
 }

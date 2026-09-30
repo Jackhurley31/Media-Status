@@ -3715,6 +3715,35 @@ namespace MediaControlApp.Forms
 
 
 
+  
+      private void BtnSwitchUser_Click(object sender, EventArgs e)
+        {
+            using (var switchForm = new SwitchUserForm(darkMode))
+            {
+                if (switchForm.ShowDialog(this) == DialogResult.OK)
+                {
+                    string newProfile = switchForm.SelectedUser;
+
+                    if (!string.IsNullOrWhiteSpace(newProfile) &&
+                        !string.Equals(newProfile, AppConfig.CurrentUser, StringComparison.OrdinalIgnoreCase))
+                    {
+                        AppConfig.SwitchUser(newProfile);
+                        BuildShowTree();
+
+                        if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
+                        {
+                            currentEpisodes = activeSeasonItems;
+                            LoadEpisodes(currentEpisodes);
+                        }
+                        else
+                        {
+                            listEpisodes.Items.Clear();
+                        }
+                    }
+                }
+            }
+        }
+
 
 
     }
