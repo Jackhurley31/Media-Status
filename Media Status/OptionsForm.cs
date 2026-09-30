@@ -24,6 +24,7 @@ namespace MediaControlApp
         private readonly VideoSettings _videoSettings;
         private UserSettings _userSettings;
         private bool _darkMode;
+        private bool _isLoading = true; // Added flag to prevent premature saves during load
 
         /// <summary>
         /// Callback executed when dark mode is toggled, allowing MainForm to update its UI live.
@@ -82,6 +83,8 @@ namespace MediaControlApp
 
             RefreshExtensionList();
             ApplyDarkMode(_darkMode);
+
+            _isLoading = false; // Finished loading, allow saving on user changes now
         }
 
         private void cmbFontSize_SelectedIndexChanged(object sender, EventArgs e)
@@ -96,15 +99,26 @@ namespace MediaControlApp
 
         private void PreviewFontChange()
         {
-            if (float.TryParse(cmbFontSize.SelectedItem?.ToString(), out float size))
+            // Do not execute or save while the form is still loading its initial settings
+            if (_isLoading) return;
+
+            if (cmbFontSize.SelectedItem != null && cmbFontFamily.SelectedItem != null)
             {
-                string selectedFont = cmbFontFamily.SelectedItem?.ToString() ?? "Segoe UI";
+                if (float.TryParse(cmbFontSize.SelectedItem.ToString(), out float size))
+                {
+                    string selectedFont = cmbFontFamily.SelectedItem.ToString();
 
-                // 1. Notify MainForm to preview BOTH font family and size live
-                OnFontSettingsChanged?.Invoke(size, selectedFont);
+                    // 1. Update settings and save immediately to disk
+                    _userSettings.UIFontSize = size;
+                    _userSettings.UIFontFamily = selectedFont;
+                    AppConfig.Save(_userSettings);
 
-                // 2. Apply ONLY size scaling to OptionsForm (keeping standard font family)
-                FontHelper.ApplyFontToForm(this, size);
+                    // 2. Notify MainForm to preview BOTH font family and size live
+                    OnFontSettingsChanged?.Invoke(size, selectedFont);
+
+                    // 3. Apply ONLY size scaling to OptionsForm (keeping standard font family)
+                    FontHelper.ApplyFontToForm(this, size);
+                }
             }
         }
 
@@ -358,18 +372,9 @@ namespace MediaControlApp
                 if (result == DialogResult.Yes)
                 {
                     _userSettings.CustomPlayerPath = newPath;
+                    AppConfig.Save(_userSettings);
                 }
             }
-
-            // Save Font Settings on Form Close
-            if (float.TryParse(cmbFontSize.SelectedItem?.ToString(), out float size))
-            {
-                _userSettings.UIFontSize = size;
-            }
-            _userSettings.UIFontFamily = cmbFontFamily.SelectedItem?.ToString() ?? "Segoe UI";
-
-            // Save all settings to disk once when form closes
-            AppConfig.Save(_userSettings);
         }
     }
 }

@@ -202,7 +202,8 @@ namespace Media_Status
                 {
                     string rawJson = File.ReadAllText(ConfigFilePath);
 
-                    if (!rawJson.Contains("CustomPlayerPath") || !rawJson.Contains("RunOnStartup"))
+                    // Check for core properties to see if migration/re-save is needed
+                    if (!rawJson.Contains("CustomPlayerPath") || !rawJson.Contains("RunOnStartup") || !rawJson.Contains("UIFontSize"))
                     {
                         forceSave = true;
                     }

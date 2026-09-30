@@ -87,11 +87,12 @@ namespace MediaControlApp.Forms
             BtnAutoRename = new Button();
             gbActions = new GroupBox();
             flowActionsInner = new FlowLayoutPanel();
+            BtnSwitchUser = new Button();
             btnShutdownOptions = new Button();
             chkSubtitles = new CheckBox();
             cmbScreens = new ComboBox();
             chkFullscreen = new CheckBox();
-            BtnSwitchUser = new Button();
+            lblCurrentUser = new Label();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -123,7 +124,7 @@ namespace MediaControlApp.Forms
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
-            splitMain.Size = new Size(1231, 557);
+            splitMain.Size = new Size(1231, 535);
             splitMain.SplitterDistance = 353;
             splitMain.TabIndex = 0;
             // 
@@ -142,7 +143,7 @@ namespace MediaControlApp.Forms
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
-            splitContainer1.Size = new Size(353, 557);
+            splitContainer1.Size = new Size(353, 535);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
@@ -165,7 +166,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 346);
+            treeShows.Size = new Size(353, 324);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -178,7 +179,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 557);
+            listEpisodes.Size = new Size(874, 535);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -227,12 +228,12 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 557);
+            layoutBottomPanel.Location = new Point(0, 535);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(1231, 103);
+            layoutBottomPanel.Size = new Size(1231, 125);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -403,7 +404,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(3, 40);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(609, 60);
+            flowLayoutPanel1.Size = new Size(609, 82);
             flowLayoutPanel1.TabIndex = 2;
             // 
             // btnoptions
@@ -491,7 +492,7 @@ namespace MediaControlApp.Forms
             gbActions.Dock = DockStyle.Fill;
             gbActions.Location = new Point(618, 40);
             gbActions.Name = "gbActions";
-            gbActions.Size = new Size(610, 60);
+            gbActions.Size = new Size(610, 82);
             gbActions.TabIndex = 3;
             gbActions.TabStop = false;
             gbActions.Text = "Actions";
@@ -500,6 +501,7 @@ namespace MediaControlApp.Forms
             // 
             flowActionsInner.AutoSize = true;
             flowActionsInner.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            flowActionsInner.Controls.Add(lblCurrentUser);
             flowActionsInner.Controls.Add(BtnSwitchUser);
             flowActionsInner.Controls.Add(btnShutdownOptions);
             flowActionsInner.Controls.Add(chkSubtitles);
@@ -508,14 +510,25 @@ namespace MediaControlApp.Forms
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
-            flowActionsInner.Size = new Size(604, 40);
+            flowActionsInner.Size = new Size(604, 62);
             flowActionsInner.TabIndex = 0;
+            // 
+            // BtnSwitchUser
+            // 
+            BtnSwitchUser.AutoSize = true;
+            BtnSwitchUser.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            BtnSwitchUser.Location = new Point(3, 34);
+            BtnSwitchUser.Name = "BtnSwitchUser";
+            BtnSwitchUser.Size = new Size(86, 25);
+            BtnSwitchUser.TabIndex = 4;
+            BtnSwitchUser.Text = "Switch User";
+            BtnSwitchUser.Click += BtnSwitchUser_Click;
             // 
             // btnShutdownOptions
             // 
             btnShutdownOptions.AutoSize = true;
             btnShutdownOptions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnShutdownOptions.Location = new Point(95, 3);
+            btnShutdownOptions.Location = new Point(95, 34);
             btnShutdownOptions.Name = "btnShutdownOptions";
             btnShutdownOptions.Size = new Size(90, 25);
             btnShutdownOptions.TabIndex = 0;
@@ -525,7 +538,7 @@ namespace MediaControlApp.Forms
             // chkSubtitles
             // 
             chkSubtitles.AutoSize = true;
-            chkSubtitles.Location = new Point(196, 6);
+            chkSubtitles.Location = new Point(196, 37);
             chkSubtitles.Margin = new Padding(8, 6, 3, 3);
             chkSubtitles.Name = "chkSubtitles";
             chkSubtitles.Size = new Size(76, 19);
@@ -537,7 +550,7 @@ namespace MediaControlApp.Forms
             // cmbScreens
             // 
             cmbScreens.FormattingEnabled = true;
-            cmbScreens.Location = new Point(278, 3);
+            cmbScreens.Location = new Point(278, 34);
             cmbScreens.Name = "cmbScreens";
             cmbScreens.Size = new Size(151, 23);
             cmbScreens.TabIndex = 2;
@@ -548,7 +561,7 @@ namespace MediaControlApp.Forms
             chkFullscreen.AutoSize = true;
             chkFullscreen.Checked = true;
             chkFullscreen.CheckState = CheckState.Checked;
-            chkFullscreen.Location = new Point(440, 6);
+            chkFullscreen.Location = new Point(440, 37);
             chkFullscreen.Margin = new Padding(8, 6, 3, 3);
             chkFullscreen.Name = "chkFullscreen";
             chkFullscreen.Size = new Size(85, 19);
@@ -557,16 +570,15 @@ namespace MediaControlApp.Forms
             chkFullscreen.UseVisualStyleBackColor = true;
             chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
             // 
-            // BtnSwitchUser
+            // lblCurrentUser
             // 
-            BtnSwitchUser.AutoSize = true;
-            BtnSwitchUser.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnSwitchUser.Location = new Point(3, 3);
-            BtnSwitchUser.Name = "BtnSwitchUser";
-            BtnSwitchUser.Size = new Size(86, 25);
-            BtnSwitchUser.TabIndex = 4;
-            BtnSwitchUser.Text = "Switch User";
-            BtnSwitchUser.Click += BtnSwitchUser_Click;
+            lblCurrentUser.AutoSize = true;
+            flowActionsInner.SetFlowBreak(lblCurrentUser, true);
+            lblCurrentUser.Location = new Point(3, 0);
+            lblCurrentUser.Name = "lblCurrentUser";
+            lblCurrentUser.Size = new Size(77, 15);
+            lblCurrentUser.TabIndex = 5;
+            lblCurrentUser.Text = "CurrentUser";
             // 
             // MainForm
             // 
@@ -615,5 +627,6 @@ namespace MediaControlApp.Forms
         private Button BtnAutoRename;
         private Button btnAutoRenameOptions;
         private Button BtnSwitchUser;
+        private Label lblCurrentUser;
     }
 }

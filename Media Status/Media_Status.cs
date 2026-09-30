@@ -95,6 +95,13 @@ namespace MediaControlApp.Forms
             chkSubtitles.Checked = _userSettings.EnableSubtitles;
             AppConfig.SyncStartupPath(_userSettings);
 
+
+
+            // Update current user label on start
+            UpdateCurrentUserLabel();
+
+
+
             listEpisodes.MouseDoubleClick += listEpisodes_MouseDoubleClick;
 
 
@@ -205,81 +212,84 @@ namespace MediaControlApp.Forms
 
         private void LoadSettings()
         {
-            userSettings = AppConfig.Load();
-            darkMode = userSettings.DarkMode;
+        userSettings = AppConfig.Load();    
+        darkMode = userSettings.DarkMode;
 
-            // Wrap the font application to prevent poster and UI layout bugs
-            this.SuspendLayout();
-            try
-            {
-                FontHelper.ApplyFontToForm(this, _userSettings.UIFontSize, _userSettings.UIFontFamily);
-
-                // Ensure poster scaling remains stable if applicable
-                if (picPoster != null)
-                {
-                    picPoster.SizeMode = PictureBoxSizeMode.Zoom;
-                }
-                this.PerformLayout();
-            }
-            finally
-            {
-                this.ResumeLayout(true);
-            }
-
-            // Load saved window size, state, and position
-            LoadScreenSettings();
-        }
-
-
-        private void LoadScreenSettings()
+        // Wrap the font application to prevent poster and UI layout bugs
+        this.SuspendLayout();
+        try
         {
-            cmbScreens.Items.Clear();
-            cmbScreens.Items.Add("Default / Unlocked (Follow Windows)");
-
-            var classifiedScreens = ScreenLayoutClassifier.GetClassifiedScreens();
-
-            foreach (var info in classifiedScreens)
+            // Only apply custom font settings if they have actually been saved/configured
+            if (!string.IsNullOrEmpty(userSettings.UIFontFamily) && userSettings.UIFontSize > 0)
             {
-                cmbScreens.Items.Add(info.Label);
+                FontHelper.ApplyFontToForm(this, userSettings.UIFontSize, userSettings.UIFontFamily);
             }
 
-            cmbScreens.DropDownWidth = 340;
-
-            int targetIndex = _userSettings.TargetScreenIndex;
-            if (targetIndex >= 0 && targetIndex < classifiedScreens.Count)
+            // Ensure poster scaling remains stable if applicable
+            if (picPoster != null)
             {
-                cmbScreens.SelectedIndex = targetIndex + 1;
+                picPoster.SizeMode = PictureBoxSizeMode.Zoom;
             }
-            else
-            {
-                cmbScreens.SelectedIndex = 0;
-            }
-
-            chkFullscreen.Checked = _userSettings.EnableFullscreen;
-
-
-
-            splitContainer1.FixedPanel = FixedPanel.Panel1;
-
-            if (_userSettings != null)
-            {
-                // Set outer split first
-                if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
-                {
-                    splitMain.SplitterDistance = _userSettings.SplitMainDistance;
-                }
-
-                // Then set inner split
-                if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
-                {
-                    splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
-                }
-            }
-
-
-
-
+            this.PerformLayout();
         }
+        finally
+        {
+            this.ResumeLayout(true);
+        }
+
+        // Load saved window size, state, and position
+        LoadScreenSettings();
+    }
+
+            private void LoadScreenSettings()
+            {
+                cmbScreens.Items.Clear();
+                cmbScreens.Items.Add("Default / Unlocked (Follow Windows)");
+
+                var classifiedScreens = ScreenLayoutClassifier.GetClassifiedScreens();
+
+                foreach (var info in classifiedScreens)
+                {
+                    cmbScreens.Items.Add(info.Label);
+                }
+
+                cmbScreens.DropDownWidth = 340;
+
+                int targetIndex = _userSettings.TargetScreenIndex;
+                if (targetIndex >= 0 && targetIndex < classifiedScreens.Count)
+                {
+                    cmbScreens.SelectedIndex = targetIndex + 1;
+                }
+                else
+                {
+                    cmbScreens.SelectedIndex = 0;
+                }
+
+                chkFullscreen.Checked = _userSettings.EnableFullscreen;
+
+
+
+                splitContainer1.FixedPanel = FixedPanel.Panel1;
+
+                if (_userSettings != null)
+                {
+                    // Set outer split first
+                    if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
+                    {
+                        splitMain.SplitterDistance = _userSettings.SplitMainDistance;
+                    }
+
+                    // Then set inner split
+                    if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
+                    {
+                        splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
+                    }
+                }
+
+
+
+
+            }
 
 
 
@@ -3056,30 +3066,27 @@ namespace MediaControlApp.Forms
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            // Save current split panel distances before closing
-            if (_userSettings != null)
-            {
-                _userSettings.SplitMainDistance = splitMain.SplitterDistance;
-                _userSettings.SplitContainer1Distance = splitContainer1.SplitterDistance;
+            // 1. Load the absolute latest settings from disk first so we don't 
+            // overwrite font changes made in OptionsForm, then update the splitters.
+            var latestSettings = AppConfig.Load() ?? new UserSettings();
+            latestSettings.SplitMainDistance = splitMain.SplitterDistance;
+            latestSettings.SplitContainer1Distance = splitContainer1.SplitterDistance;
 
-                AppConfig.Save(_userSettings); // Saves to app_settings.json[cite: 3]
-            }
+            AppConfig.Save(latestSettings);
+            _userSettings = latestSettings; // Keep local reference synced
 
-
-
-            // Check if VLC process is currently running/playing
+            // 2. Check if VLC process is currently running/playing
             bool isPlaying = currentPlayingProcess != null && !currentPlayingProcess.HasExited;
 
             if (isPlaying)
             {
                 DialogResult autoPlayResult = DarkMessageBox.Show(
-                this,
+                    this,
                     "Please click the Stop button to save your playback progress before closing the application.",
                     "Playback Active",
                     "Use Stop button to save progress",
                     MessageBoxButtons.OK,
                     darkMode // Passes true for dark, false for light
-
                 );
 
                 // Cancel the close operation and keep the form open
@@ -3087,7 +3094,7 @@ namespace MediaControlApp.Forms
                 return;
             }
 
-            // Standard exit save when media is already stopped
+            // 3. Standard exit save when media is already stopped
             try
             {
                 if (_backgroundSaveTask != null && !_backgroundSaveTask.IsCompleted)
@@ -3714,10 +3721,29 @@ namespace MediaControlApp.Forms
         }
 
 
-
-  
-      private void BtnSwitchUser_Click(object sender, EventArgs e)
+        private void UpdateCurrentUserLabel()
         {
+            if (lblCurrentUser != null)
+            {
+                lblCurrentUser.Text = $"Current User: {AppConfig.CurrentUser}";
+            }
+        }
+
+        private void BtnSwitchUser_Click(object sender, EventArgs e)
+        {
+            // Check if media is currently playing before proceeding
+            if (_isPlaying) // Replace with your actual tracking variable/property
+            {
+                DarkMessageBox.Show(
+                    this,
+                    "Cannot switch users while media is currently playing.",
+                    "Action Blocked",
+                    MessageBoxButtons.OK
+                );
+
+                return;
+            }
+
             using (var switchForm = new SwitchUserForm(darkMode))
             {
                 if (switchForm.ShowDialog(this) == DialogResult.OK)
@@ -3728,6 +3754,10 @@ namespace MediaControlApp.Forms
                         !string.Equals(newProfile, AppConfig.CurrentUser, StringComparison.OrdinalIgnoreCase))
                     {
                         AppConfig.SwitchUser(newProfile);
+
+                        // Update the user interface label to reflect the new user
+                        UpdateCurrentUserLabel(); // Adjust this name if your label update method is called differently
+
                         BuildShowTree();
 
                         if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
