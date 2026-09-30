@@ -409,6 +409,8 @@ namespace MediaControlApp.Forms
                         return;
                     }
 
+                    _isPlaying = true;
+
                     if (autoPlayResult == DialogResult.Cancel)
                     {
                         return; // User canceled action
@@ -3233,6 +3235,9 @@ namespace MediaControlApp.Forms
                 _isPlaying = false;
                 return;
             }
+
+            _isPlaying = true;
+
 
             if (autoPlayResult == DialogResult.Cancel) return;
 
