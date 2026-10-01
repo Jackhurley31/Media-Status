@@ -114,9 +114,13 @@ public static class EpisodeRenamer
 
         try
         {
+            string commonJunkRegex = @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|DVDRip|BDRip|BRRip|BluRay|HD|x264|x265|HEVC|AVC|Xvid|DivX|10bit|8bit|HDR|HDR10|Atmos|TrueHD|DDP?|DD\+|AC3|AAC|MP3|DTS|CH|\d+CH|PROPER|REPACK|INTERNAL|EXTENDED|UNRATED|REMASTERED|PSA|FENIX|EZTV|AFG|DSNP|NF|AMZN|HULU|ATVP|MAX|PCOK|CRITERION)\b";
+
             // Normalize show name for API query
             string processedShowName = showName.Replace(".", " ");
-            string cleanShowNameForApi = Regex.Replace(processedShowName, @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|x264|x265|HEVC|10bit|8bit|\d+CH|PSA|FENIX|EZTV)\b", "", RegexOptions.IgnoreCase);
+            string cleanShowNameForApi = Regex.Replace(processedShowName, commonJunkRegex, "", RegexOptions.IgnoreCase);
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\(\d{4}\)", "").Trim();
+            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\b(19|20)\d{2}\b", "").Trim();
             cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\bS\d+E\d+\b", "").Trim();
             cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\b\d+x\d+\b", "").Trim();
             cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"[\.\-_]+", " ").Trim();
@@ -134,14 +138,6 @@ public static class EpisodeRenamer
 
                     string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(cleanShowNameForApi)}&embed=episodes";
                     HttpResponseMessage response = await client.GetAsync(searchUrl);
-
-                    if (!response.IsSuccessStatusCode && Regex.IsMatch(cleanShowNameForApi, @"\(\d{4}\)|\b\d{4}\b"))
-                    {
-                        string nameWithoutYear = Regex.Replace(cleanShowNameForApi, @"\(\d{4}\)", "");
-                        nameWithoutYear = Regex.Replace(nameWithoutYear, @"\b\d{4}\b", "").Trim();
-                        string fallbackSearchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(nameWithoutYear)}&embed=episodes";
-                        response = await client.GetAsync(fallbackSearchUrl);
-                    }
 
                     if (response.IsSuccessStatusCode)
                     {
@@ -172,7 +168,7 @@ public static class EpisodeRenamer
             }
             catch
             {
-                // Fallback gracefully to local rules if API fails
+                // API failed, will rely smoothly on local cleaning rules
             }
 
             int renamedCount = 0;
@@ -185,7 +181,6 @@ public static class EpisodeRenamer
                     if (string.IsNullOrWhiteSpace(oldFullPath) || !File.Exists(oldFullPath)) continue;
 
                     string fileNameOnly = Path.GetFileNameWithoutExtension(oldFullPath);
-                    if (fileNameOnly.Contains("special", StringComparison.OrdinalIgnoreCase)) continue;
 
                     item.CacheParsed();
                     int season = item.CachedSeason;
@@ -216,19 +211,22 @@ public static class EpisodeRenamer
                     }
                     else
                     {
+                        // Clean local fallback: strips out brackets, resolutions, codecs, release groups, and years
                         string cleaned = fileNameOnly.Replace(".", " ");
                         cleaned = Regex.Replace(cleaned, @"\[.*?\]", string.Empty);
                         cleaned = Regex.Replace(cleaned, @"\(.*?\)", string.Empty);
-                        cleaned = Regex.Replace(cleaned, @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|x264|x265|HEVC|10bit|8bit|\d+CH|PSA|FENIX|EZTV)\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, commonJunkRegex, string.Empty, RegexOptions.IgnoreCase);
                         cleaned = Regex.Replace(cleaned, @$"(?i)\b{Regex.Escape(showName.Replace(".", " "))}\b", string.Empty);
+                        cleaned = Regex.Replace(cleaned, @"\b(19|20)\d{2}\b", string.Empty);
                         cleaned = Regex.Replace(cleaned, @"(?i)\bS\d+E\d+\b", string.Empty);
                         cleaned = Regex.Replace(cleaned, @"(?i)\b\d+x\d+\b", string.Empty);
                         cleaned = Regex.Replace(cleaned, @"[\.\-_]+", " ");
                         epTitle = Regex.Replace(cleaned, @"\s+", " ").Trim();
 
+                        // If title is completely blank or matches the show name, format it safely as "Episode X" instead of leaving group tags
                         if (string.IsNullOrWhiteSpace(epTitle) || epTitle.Equals(showName, StringComparison.OrdinalIgnoreCase))
                         {
-                            epTitle = episode > 0 ? $"Episode {episode}" : fileNameOnly;
+                            epTitle = episode > 0 ? $"Episode {episode}" : "Episode";
                         }
                     }
 
@@ -240,9 +238,13 @@ public static class EpisodeRenamer
 
                     string formattedName = formatPattern;
 
-                    if (includeShow && !string.IsNullOrWhiteSpace(showName))
+                    // Clean show name for final file output (removes standalone years like 2026 from the filename display)
+                    string displayShowName = Regex.Replace(showName, @"\b(19|20)\d{2}\b", "").Trim();
+                    displayShowName = Regex.Replace(displayShowName, @"\s+", " ");
+
+                    if (includeShow && !string.IsNullOrWhiteSpace(displayShowName))
                     {
-                        formattedName = formattedName.Replace("{Show}", showName);
+                        formattedName = formattedName.Replace("{Show}", displayShowName);
                     }
                     else
                     {
@@ -316,7 +318,7 @@ public static class EpisodeRenamer
             }
             else
             {
-                DarkMessageBox.Show(parentForm, "No valid files needed renaming or matches were found.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
+                DarkMessageBox.Show(parentForm, "No files needed renaming or they were already formatted correctly.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
             }
         }
         catch (Exception ex)
