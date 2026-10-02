@@ -3777,6 +3777,11 @@ namespace MediaControlApp.Forms
         }
 
 
+
+
+
+
+
         private void UpdateCurrentUserLabel()
         {
             if (lblCurrentUser != null)
@@ -3788,15 +3793,15 @@ namespace MediaControlApp.Forms
         private void BtnSwitchUser_Click(object sender, EventArgs e)
         {
             // Check if media is currently playing before proceeding
-            if (_isPlaying) // Replace with your actual tracking variable/property
+            if (_isPlaying)
             {
                 DarkMessageBox.Show(
                     this,
                     "Cannot switch users while media is currently playing.",
                     "Action Blocked",
-                    MessageBoxButtons.OK
+                    MessageBoxButtons.OK,
+                    darkMode
                 );
-
                 return;
             }
 
@@ -3809,11 +3814,31 @@ namespace MediaControlApp.Forms
                     if (!string.IsNullOrWhiteSpace(newProfile) &&
                         !string.Equals(newProfile, AppConfig.CurrentUser, StringComparison.OrdinalIgnoreCase))
                     {
+                        // 1. Switch profile context
                         AppConfig.SwitchUser(newProfile);
 
-                        // Update the user interface label to reflect the new user
-                        UpdateCurrentUserLabel(); // Adjust this name if your label update method is called differently
+                        // 2. Reload the user's settings and media cache
+                        _userSettings = AppConfig.Load();
+                        items = MediaCache.Load(JsonPath);
+                        foreach (var it in items)
+                        {
+                            if (string.IsNullOrWhiteSpace(it.CachedSeriesName))
+                                it.CacheParsed();
+                        }
 
+                        // 3. Update local dark mode state and apply MainForm's full dark mode styling
+                        darkMode = _userSettings.DarkMode;
+                        ApplyDarkMode(darkMode); // Replace with your MainForm's actual dark mode application method if named differently
+
+                        // 4. Apply the user's saved font family and font size
+                        float fontSize = _userSettings.UIFontSize > 0 ? _userSettings.UIFontSize : 11f;
+                        string fontFamily = !string.IsNullOrEmpty(_userSettings.UIFontFamily) ? _userSettings.UIFontFamily : "Segoe UI";
+                        OptionsForm.FontHelper.ApplyFontToForm(this, fontSize, fontFamily);
+
+                        // 5. Update the user interface label to reflect the new user
+                        UpdateCurrentUserLabel();
+
+                        // 6. Rebuild the show tree with the new user's watched/favourite state
                         BuildShowTree();
 
                         if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
@@ -3824,6 +3849,8 @@ namespace MediaControlApp.Forms
                         else
                         {
                             listEpisodes.Items.Clear();
+                            currentEpisodes = new List<MediaItem>();
+                            picPoster.Image = null;
                         }
                     }
                 }
@@ -3832,5 +3859,36 @@ namespace MediaControlApp.Forms
 
 
 
+        private void ApplyUserSettingsToUI()
+        {
+            // 1. Update your local dark mode tracking variable from the loaded settings
+            darkMode = _userSettings.DarkMode;
+
+            // 2. Apply Dark Mode colors to MainForm components
+            Color backColor = darkMode ? Color.FromArgb(30, 30, 30) : Color.White;
+            Color foreColor = darkMode ? Color.White : Color.Black;
+
+            this.BackColor = backColor;
+            this.ForeColor = foreColor;
+
+            listEpisodes.BackColor = backColor;
+            listEpisodes.ForeColor = foreColor;
+            treeShows.BackColor = backColor;
+            treeShows.ForeColor = foreColor;
+
+            // 3. Apply the user's saved font family and font size using your FontHelper
+            float fontSize = _userSettings.UIFontSize > 0 ? _userSettings.UIFontSize : 11f;
+            string fontFamily = !string.IsNullOrEmpty(_userSettings.UIFontFamily) ? _userSettings.UIFontFamily : "Segoe UI";
+
+            OptionsForm.FontHelper.ApplyFontToForm(this, fontSize, fontFamily);
+        }
+
+
+
+
+
+
+
     }
+    
 }
