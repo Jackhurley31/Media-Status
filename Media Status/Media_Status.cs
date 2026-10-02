@@ -63,7 +63,9 @@ namespace MediaControlApp.Forms
         private bool _userStoppedPlayback = false;
 
 
-
+        private System.Threading.Timer _autoSaveTimer;
+        private readonly object _dirtyLock = new object();
+        private bool _isDirty = false;
 
 
 
@@ -85,6 +87,10 @@ namespace MediaControlApp.Forms
         public MainForm()
         {
             InitializeComponent();
+
+
+            // Runs every 3 minutes after an initial 3-minute delay
+            _autoSaveTimer = new System.Threading.Timer(AutoSaveCallback, null, TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(3));
 
 
             // Allows the form to catch key events before focused controls capture them
@@ -1829,10 +1835,47 @@ namespace MediaControlApp.Forms
 
 
 
+        private void AutoSaveCallback(object state)
+        {
+            bool shouldSave = false;
+
+            lock (_dirtyLock)
+            {
+                if (_isDirty)
+                {
+                    shouldSave = true;
+                    _isDirty = false; // Reset the flag so it doesn't repeatedly save if idle
+                }
+            }
+
+            if (shouldSave)
+            {
+                // Invoke your existing save method safely in the background
+                SaveAndMergeState();
+            }
+        }
+
+        // Call this method whenever a user action changes data (e.g., favorite toggled, progress updated)
+        public void MarkStateDirty()
+        {
+            lock (_dirtyLock)
+            {
+                _isDirty = true;
+            }
+        }
+
+
+
+
+
 
         // Merge that normalizes only for comparison and reuses existing items
         private void ScanDiskAndMerge(IProgress<string> progress = null)
         {
+            progress?.Report("Saving Current State...");
+            // Ensure any unsaved in-memory changes are written to disk before reloading
+            SaveAndMergeState();
+
             progress?.Report("Loading Cache...");
 
             items = MediaCache.Load(JsonPath) ?? new List<MediaItem>();
@@ -1909,6 +1952,10 @@ namespace MediaControlApp.Forms
                             movedItem.CacheParsed();
 
                         merged.Add(movedItem);
+
+                        // Optional enhancement: remove from dictionary so duplicate filenames 
+                        // don't incorrectly re-assign the same historical object to multiple distinct files
+                        fileNameDict.Remove(fileName);
                     }
                     else
                     {
@@ -3118,6 +3165,10 @@ namespace MediaControlApp.Forms
             {
                 System.Diagnostics.Debug.WriteLine($"Error during exit save: {ex.Message}");
             }
+
+
+            _autoSaveTimer?.Dispose();
+
         }
 
         private async void btnOrganiz_Click(object sender, EventArgs e)
