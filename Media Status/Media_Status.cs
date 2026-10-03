@@ -2912,6 +2912,7 @@ namespace MediaControlApp.Forms
             }
             finally
             {
+                _isPlaying = false;
                 SetPlaybackState(false);
                 _userStoppedPlayback = false;
 
