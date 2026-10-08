@@ -589,7 +589,6 @@ namespace MediaControlApp.Forms
                         (i.FileName != null && i.FileName.Contains(cleanFilter, StringComparison.OrdinalIgnoreCase))).ToList();
 
                 TreeNode nodeToSelect = null;
-
                 // =========================================================================
                 // SECTION 3: Root Nodes setup ("Continue", "Recently Added" & "Watched")
                 // =========================================================================
@@ -626,13 +625,32 @@ namespace MediaControlApp.Forms
                     treeShows.Nodes.Add(topContinueNode); // Index 0
                 }
 
-                // 4. Create "Recently Added" node directly BELOW "Continue" (Using Fast C: Drive Cache)
+                // 4. Create "Recently Added" node directly BELOW "Continue" (Checking current calendar month)
                 TreeNode topRecentlyAddedNode = null;
-                DateTime thirtyDaysAgo = DateTime.Now.AddDays(-30);
+                DateTime now = DateTime.Now;
 
-                // Filter individual items modified within the last 30 days that are unwatched
                 var recentTvItems = tvItems
-                    .Where(i => i.CachedDateModified >= thirtyDaysAgo && !i.IsWatched(AppConfig.CurrentUser))
+                    .Where(i =>
+                    {
+                        // Use cached date directly if available, fallback safely without hitting File.GetLastWriteTime on UI thread
+                        DateTime modDate = i.CachedDateModified;
+                        if (modDate == DateTime.MinValue)
+                        {
+                            try
+                            {
+                                string fullPath = BuildFullPath(i.FilePath);
+                                if (File.Exists(fullPath))
+                                {
+                                    modDate = File.GetLastWriteTime(fullPath);
+                                    i.CachedDateModified = modDate; // Cache it so it never lags again
+                                }
+                            }
+                            catch { }
+                        }
+
+                        // Check if the item's modification date falls within the current year and month
+                        return modDate.Year == now.Year && modDate.Month == now.Month;
+                    })
                     .ToList();
 
                 if (recentTvItems.Any())
@@ -2763,6 +2781,8 @@ namespace MediaControlApp.Forms
                     if (_userStoppedPlayback) break;
                     if (ep == null) continue;
 
+                    _currentPlayingItem = ep; // Track globally for stop handler
+
                     // Update UI highlight safely if item is currently present in the list view
                     this.Invoke((MethodInvoker)delegate
                     {
@@ -2783,7 +2803,10 @@ namespace MediaControlApp.Forms
                     if (!File.Exists(fullPath)) continue;
 
                     string currentUser = AppConfig.CurrentUser;
+                    if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
+
                     double userSavedPos = ep.GetSavedPosition(currentUser);
+                    _currentVlcTime = userSavedPos;
 
                     var startInfo = GetVlcStartInfo(fullPath, userSavedPos);
                     if (startInfo == null) break;
@@ -2793,8 +2816,6 @@ namespace MediaControlApp.Forms
                         var sw = Stopwatch.StartNew();
                         currentPlayingProcess = Process.Start(startInfo);
                         if (currentPlayingProcess == null) continue;
-
-                        double lastKnownVlcTime = userSavedPos;
 
                         // Monitor VLC process and poll for exact playback position
                         while (!currentPlayingProcess.HasExited && !_userStoppedPlayback)
@@ -2811,7 +2832,7 @@ namespace MediaControlApp.Forms
                             double exactTime = await GetVlcCurrentTimeSecondsAsync();
                             if (exactTime >= 0)
                             {
-                                lastKnownVlcTime = exactTime;
+                                _currentVlcTime = exactTime;
                             }
                         }
 
@@ -2819,37 +2840,19 @@ namespace MediaControlApp.Forms
 
                         if (_userStoppedPlayback)
                         {
-                            // Clear timestamp if stopped within 30 seconds of video end
-                            if (ep.Duration > TimeSpan.Zero && lastKnownVlcTime >= (ep.Duration.TotalSeconds - 30))
-                            {
-                                lastKnownVlcTime = 0;
-                            }
-
-                            ep.SetSavedPosition(currentUser, lastKnownVlcTime);
-
-                            var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
-                            if (masterItem != null)
-                            {
-                                masterItem.SetSavedPosition(currentUser, lastKnownVlcTime);
-                            }
-
-                            SaveAndMergeState();
-                            break;
+                            break; // Handled by btnStop_Click logic
                         }
                         else if (sw.Elapsed.TotalSeconds > 3)
                         {
                             // Episode finished completely: reset position and mark watched
                             ep.SetSavedPosition(currentUser, 0);
+                            ep.MarkWatched(currentUser);
 
-                            string user = AppConfig.CurrentUser;
-                            if (string.IsNullOrWhiteSpace(user)) user = "Default";
-
-                            ep.MarkWatched(user);
                             var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
                             if (masterItem != null)
                             {
                                 masterItem.SetSavedPosition(currentUser, 0);
-                                masterItem.MarkWatched(user);
+                                masterItem.MarkWatched(currentUser);
                             }
 
                             SaveAndMergeState();
@@ -2915,6 +2918,7 @@ namespace MediaControlApp.Forms
                 _isPlaying = false;
                 SetPlaybackState(false);
                 _userStoppedPlayback = false;
+                _currentPlayingItem = null;
 
                 // Refresh tree and restore selected season view cleanly
                 this.Invoke((MethodInvoker)delegate
@@ -3001,7 +3005,10 @@ namespace MediaControlApp.Forms
 
 
 
+
         private bool _isProcessingStop = false;
+        private MediaItem _currentPlayingItem = null;
+        private double _currentVlcTime = 0;
 
         private async void btnStop_Click(object sender, EventArgs e)
         {
@@ -3012,17 +3019,51 @@ namespace MediaControlApp.Forms
             _userStoppedPlayback = true;
             _playbackCts?.Cancel();
 
+            // Grab the currently playing item from our active tracker or list selection
+            MediaItem targetEp = _currentPlayingItem;
+            if (targetEp == null && listEpisodes.SelectedItems.Count > 0 &&
+                listEpisodes.SelectedItems[0].Tag is MediaItem selectedMedia)
+            {
+                targetEp = selectedMedia;
+            }
+
+            // Check if stopped within 30 seconds of the video end
+            if (targetEp != null && targetEp.Duration > TimeSpan.Zero && _currentVlcTime >= (targetEp.Duration.TotalSeconds - 30))
+            {
+                string currentUser = AppConfig.CurrentUser;
+                if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
+
+                targetEp.MarkWatched(currentUser);
+                targetEp.SetSavedPosition(currentUser, 0);
+
+                var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, targetEp.FilePath, StringComparison.OrdinalIgnoreCase));
+                if (masterItem != null)
+                {
+                    masterItem.MarkWatched(currentUser);
+                    masterItem.SetSavedPosition(currentUser, 0);
+                }
+            }
+            else if (targetEp != null)
+            {
+                string currentUser = AppConfig.CurrentUser;
+                if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
+
+                targetEp.SetSavedPosition(currentUser, _currentVlcTime);
+
+                var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, targetEp.FilePath, StringComparison.OrdinalIgnoreCase));
+                if (masterItem != null)
+                {
+                    masterItem.SetSavedPosition(currentUser, _currentVlcTime);
+                }
+            }
+
             SetPlaybackState(false);
             _isPlaying = false;
 
             var procToKill = currentPlayingProcess;
             currentPlayingProcess = null;
-
-            if (listEpisodes.SelectedItems.Count > 0 &&
-                listEpisodes.SelectedItems[0].Tag is MediaItem selectedMedia)
-            {
-                UpdatePlayButtonText(selectedMedia);
-            }
+            _currentPlayingItem = null;
+            _currentVlcTime = 0;
 
             // 2. Offload process killing and WaitForExit to a background thread
             await Task.Run(() =>
@@ -3061,7 +3102,7 @@ namespace MediaControlApp.Forms
                 catch { }
             });
 
-            // 3. Save state in background
+            // 3. Save state in background and refresh tree safely preserving selection view
             _backgroundSaveTask = Task.Run(() =>
             {
                 lock (_saveLock)
@@ -3070,9 +3111,28 @@ namespace MediaControlApp.Forms
                 }
             }).ContinueWith(_ =>
             {
-                if (IsHandleCreated)
+                if (IsHandleCreated && !IsDisposed)
                 {
-                    BeginInvoke(new Action(() => _isProcessingStop = false));
+                    BeginInvoke(new Action(() =>
+                    {
+                        _isProcessingStop = false;
+
+                        string previouslySelectedShow = treeShows.SelectedNode?.Text;
+                        BuildShowTree(); // Refresh UI to reflect watched status
+
+                        // Restore selection so it doesn't go blank
+                        if (!string.IsNullOrEmpty(previouslySelectedShow))
+                        {
+                            foreach (TreeNode node in treeShows.Nodes)
+                            {
+                                if (node.Text.Equals(previouslySelectedShow, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    treeShows.SelectedNode = node;
+                                    break;
+                                }
+                            }
+                        }
+                    }));
                 }
                 else
                 {

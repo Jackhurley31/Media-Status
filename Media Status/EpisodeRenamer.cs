@@ -28,7 +28,7 @@ public static class EpisodeRenamer
 
         HashSet<string> categoryNodes = new(StringComparer.OrdinalIgnoreCase)
         {
-            "Watched", "Continue", "Films", "TV Shows", "All Shows", "Favorites"
+            "Watched", "Continue", "Recently Added", "Films", "TV Shows", "All Shows", "Favorites"
         };
 
         // 1. Check selected items in list view
@@ -50,15 +50,16 @@ public static class EpisodeRenamer
             while (curr != null)
             {
                 string cleanedText = curr.Text.Replace("★ ", "").Trim();
-                if (curr.Parent != null && categoryNodes.Contains(curr.Parent.Text.Trim()))
+
+                // If this node is a category/virtual root, skip it and keep traversing
+                if (!categoryNodes.Contains(cleanedText))
                 {
-                    showName = cleanedText;
-                    break;
-                }
-                if (curr.Parent == null && !categoryNodes.Contains(cleanedText))
-                {
-                    showName = cleanedText;
-                    break;
+                    // Check if it's a top-level show or its parent is a category node
+                    if (curr.Parent == null || categoryNodes.Contains(curr.Parent.Text.Trim()))
+                    {
+                        showName = cleanedText;
+                        break;
+                    }
                 }
                 curr = curr.Parent;
             }
