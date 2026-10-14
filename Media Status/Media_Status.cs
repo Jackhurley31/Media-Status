@@ -2764,14 +2764,13 @@ namespace MediaControlApp.Forms
 
 
 
+        private VideoPlayerForm _activePlayerForm = null;
+
         private async Task PlayEpisodesQueueAsync(List<MediaItem> playlist)
         {
             if (playlist == null || playlist.Count == 0) return;
 
             _userStoppedPlayback = false;
-            _playbackCts?.Cancel();
-            _playbackCts = new CancellationTokenSource();
-
             SetPlaybackState(true);
 
             try
@@ -2806,108 +2805,154 @@ namespace MediaControlApp.Forms
                     if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
 
                     double userSavedPos = ep.GetSavedPosition(currentUser);
-                    _currentVlcTime = userSavedPos;
 
-                    var startInfo = GetVlcStartInfo(fullPath, userSavedPos);
-                    if (startInfo == null) break;
+                    // Create custom embedded Video Player Form
+                    _activePlayerForm = new VideoPlayerForm(fullPath, userSavedPos, _userSettings, this);
 
-                    try
+                    // 1. Determine target screen index safely
+                    int targetScreenIdx = _userSettings.TargetScreenIndex;
+
+                    if (targetScreenIdx < 0 || targetScreenIdx >= Screen.AllScreens.Length)
                     {
-                        var sw = Stopwatch.StartNew();
-                        currentPlayingProcess = Process.Start(startInfo);
-                        if (currentPlayingProcess == null) continue;
+                        // If set to Default (-1), fall back to MainForm's screen
+                        var ownerScreen = Screen.FromControl(this);
+                        targetScreenIdx = Array.IndexOf(Screen.AllScreens, ownerScreen);
+                        if (targetScreenIdx < 0) targetScreenIdx = 0;
+                    }
 
-                        // Monitor VLC process and poll for exact playback position
-                        while (!currentPlayingProcess.HasExited && !_userStoppedPlayback)
+                    var targetScreen = Screen.AllScreens[targetScreenIdx];
+                    _activePlayerForm.StartPosition = FormStartPosition.Manual;
+
+                    // 2. Apply Fullscreen or Windowed bounds directly on the chosen target monitor
+                    if (_userSettings.EnableFullscreen)
+                    {
+                        _activePlayerForm.FormBorderStyle = FormBorderStyle.None;
+                        _activePlayerForm.WindowState = FormWindowState.Normal;
+                        _activePlayerForm.Bounds = targetScreen.Bounds;
+                    }
+                    else
+                    {
+                        _activePlayerForm.FormBorderStyle = FormBorderStyle.Sizable;
+                        _activePlayerForm.WindowState = FormWindowState.Normal;
+                        _activePlayerForm.Location = targetScreen.WorkingArea.Location;
+                        _activePlayerForm.Width = Math.Min(1280, targetScreen.WorkingArea.Width - 100);
+                        _activePlayerForm.Height = Math.Min(720, targetScreen.WorkingArea.Height - 100);
+                    }
+
+                    var tcs = new TaskCompletionSource<bool>();
+
+                    // 3. VLC-style memory: Always capture and save the exact screen the window is on when closed
+                    _activePlayerForm.FormClosed += (s, args) =>
+                    {
+                        if (_activePlayerForm != null && !_activePlayerForm.IsDisposed)
                         {
-                            try
+                            var finalScreen = Screen.FromControl(_activePlayerForm);
+                            int finalScreenIdx = Array.IndexOf(Screen.AllScreens, finalScreen);
+                            if (finalScreenIdx >= 0)
                             {
-                                await Task.Delay(200, _playbackCts.Token);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                break; // Exit loop instantly when token is canceled!
-                            }
-
-                            double exactTime = await GetVlcCurrentTimeSecondsAsync();
-                            if (exactTime >= 0)
-                            {
-                                _currentVlcTime = exactTime;
+                                // Always persist the last screen the player lived on when closed
+                                _userSettings.TargetScreenIndex = finalScreenIdx;
+                                SaveScreenSettings();
                             }
                         }
+                        tcs.SetResult(true);
+                    };
 
-                        sw.Stop();
+                    // Open non-modally so MainForm remains accessible
+                    _activePlayerForm.Show(this);
 
-                        if (_userStoppedPlayback)
+                    // Wait asynchronously for the player to close
+                    await tcs.Task;
+
+                    bool userCancelled = _activePlayerForm != null && _activePlayerForm.UserStoppedPlayback;
+
+                    double finalTime = _activePlayerForm?.CurrentPlaybackTime ?? 0;
+                    _currentVlcTime = finalTime;
+                    _activePlayerForm = null;
+
+                    if (_userStoppedPlayback || userCancelled)
+                    {
+                        // Save partial progress before breaking out of the queue
+                        if (finalTime > 5 && !ep.IsWatched(currentUser))
                         {
-                            break; // Handled by btnStop_Click logic
-                        }
-                        else if (sw.Elapsed.TotalSeconds > 3)
-                        {
-                            // Episode finished completely: reset position and mark watched
-                            ep.SetSavedPosition(currentUser, 0);
-                            ep.MarkWatched(currentUser);
-
+                            ep.SetSavedPosition(currentUser, finalTime);
                             var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
                             if (masterItem != null)
                             {
-                                masterItem.SetSavedPosition(currentUser, 0);
-                                masterItem.MarkWatched(currentUser);
+                                masterItem.SetSavedPosition(currentUser, finalTime);
                             }
-
-                            SaveAndMergeState();
-
-                            // Force UI and Title Bar to refresh on the UI thread
-                            this.Invoke((MethodInvoker)delegate
-                            {
-                                // 1. Refresh Checkmark in list view
-                                foreach (ListViewItem item in listEpisodes.Items)
-                                {
-                                    if (item.Tag is MediaItem m && string.Equals(m.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        item.SubItems[4].Text = GetWatchedDisplay(ep);
-                                        listEpisodes.Refresh();
-                                        break;
-                                    }
-                                }
-
-                                // 2. Recalculate remaining time for active season
-                                if (currentEpisodes != null && currentEpisodes.Count > 0)
-                                {
-                                    TimeSpan newTotal = currentEpisodes.Aggregate(TimeSpan.Zero, (acc, x) => acc + x.Duration);
-                                    TimeSpan newRemaining = currentEpisodes
-                                        .Where(x => !x.IsWatched(AppConfig.CurrentUser))
-                                        .Aggregate(TimeSpan.Zero, (acc, x) => acc + x.Duration);
-
-                                    UpdateWatchTimeSummary(newTotal, newRemaining);
-                                }
-                            });
-
-                            // Trigger 0: After current episode finishes
-                            if (_isPowerActionActive && _activePowerTrigger == 0)
-                            {
-                                await ExecutePowerActionAsync();
-                                break; // Stop playing remaining episodes in the list
-                            }
+                            await Task.Run(() => SaveAndMergeState());
                         }
+
+                        _userStoppedPlayback = true;
+                        break; // Halts the queue instantly and cancels auto-play!
                     }
-                    catch (Exception ex)
+
+                    if (_userStoppedPlayback)
                     {
-                        // Ignore error alerts if the user intentionally clicked Stop
-                        if (!_userStoppedPlayback)
-                        {
-                            MessageBox.Show($"Playback error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
                         break;
                     }
-                    finally
+                    else if (ep.Duration > TimeSpan.Zero && finalTime >= (ep.Duration.TotalSeconds - 30))
                     {
-                        currentPlayingProcess?.Dispose();
-                        currentPlayingProcess = null; // Clean up safely only after loop exits
+                        // Episode finished: reset position and mark watched
+                        ep.SetSavedPosition(currentUser, 0);
+                        ep.MarkWatched(currentUser);
+
+                        var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
+                        if (masterItem != null)
+                        {
+                            masterItem.SetSavedPosition(currentUser, 0);
+                            masterItem.MarkWatched(currentUser);
+                        }
+
+                        await Task.Run(() => SaveAndMergeState());
+
+                        // Refresh UI thread status
+                        this.Invoke((MethodInvoker)delegate
+                        {
+                            foreach (ListViewItem item in listEpisodes.Items)
+                            {
+                                if (item.Tag is MediaItem m && string.Equals(m.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    item.SubItems[4].Text = GetWatchedDisplay(ep);
+                                    listEpisodes.Refresh();
+                                    break;
+                                }
+                            }
+
+                            if (currentEpisodes != null && currentEpisodes.Count > 0)
+                            {
+                                TimeSpan newTotal = currentEpisodes.Aggregate(TimeSpan.Zero, (acc, x) => acc + x.Duration);
+                                TimeSpan newRemaining = currentEpisodes
+                                    .Where(x => !x.IsWatched(AppConfig.CurrentUser))
+                                    .Aggregate(TimeSpan.Zero, (acc, x) => acc + x.Duration);
+
+                                UpdateWatchTimeSummary(newTotal, newRemaining);
+                            }
+                        });
+
+                        // Power Timer trigger for end of current video
+                        if (_isPowerActionActive && _activePowerTrigger == 0)
+                        {
+                            await ExecutePowerActionAsync();
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Saved partial progress
+                        ep.SetSavedPosition(currentUser, finalTime);
+                        var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
+                        if (masterItem != null)
+                        {
+                            masterItem.SetSavedPosition(currentUser, finalTime);
+                        }
+
+                        await Task.Run(() => SaveAndMergeState());
                     }
                 }
 
-                // Trigger 1: After complete playback queue finishes naturally
+                // Power Timer trigger for end of queue
                 if (_isPowerActionActive && _activePowerTrigger == 1 && !_userStoppedPlayback)
                 {
                     await ExecutePowerActionAsync();
@@ -2920,17 +2965,7 @@ namespace MediaControlApp.Forms
                 _userStoppedPlayback = false;
                 _currentPlayingItem = null;
 
-                // Refresh tree and restore selected season view cleanly
-                this.Invoke((MethodInvoker)delegate
-                {
-                    BuildShowTree();
-
-                    if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
-                    {
-                        currentEpisodes = activeSeasonItems;
-                        LoadEpisodes(currentEpisodes);
-                    }
-                });
+                this.Invoke((MethodInvoker)(() => SetPlaybackState(false)));
             }
         }
 
@@ -3015,94 +3050,17 @@ namespace MediaControlApp.Forms
             if (_isProcessingStop) return;
             _isProcessingStop = true;
 
-            // 1. Signal cancellation instantly
             _userStoppedPlayback = true;
-            _playbackCts?.Cancel();
 
-            // Grab the currently playing item from our active tracker or list selection
-            MediaItem targetEp = _currentPlayingItem;
-            if (targetEp == null && listEpisodes.SelectedItems.Count > 0 &&
-                listEpisodes.SelectedItems[0].Tag is MediaItem selectedMedia)
+            // Close custom video window if active
+            if (_activePlayerForm != null && !_activePlayerForm.IsDisposed)
             {
-                targetEp = selectedMedia;
-            }
-
-            // Check if stopped within 30 seconds of the video end
-            if (targetEp != null && targetEp.Duration > TimeSpan.Zero && _currentVlcTime >= (targetEp.Duration.TotalSeconds - 30))
-            {
-                string currentUser = AppConfig.CurrentUser;
-                if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
-
-                targetEp.MarkWatched(currentUser);
-                targetEp.SetSavedPosition(currentUser, 0);
-
-                var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, targetEp.FilePath, StringComparison.OrdinalIgnoreCase));
-                if (masterItem != null)
-                {
-                    masterItem.MarkWatched(currentUser);
-                    masterItem.SetSavedPosition(currentUser, 0);
-                }
-            }
-            else if (targetEp != null)
-            {
-                string currentUser = AppConfig.CurrentUser;
-                if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
-
-                targetEp.SetSavedPosition(currentUser, _currentVlcTime);
-
-                var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, targetEp.FilePath, StringComparison.OrdinalIgnoreCase));
-                if (masterItem != null)
-                {
-                    masterItem.SetSavedPosition(currentUser, _currentVlcTime);
-                }
+                _activePlayerForm.Close();
             }
 
             SetPlaybackState(false);
             _isPlaying = false;
 
-            var procToKill = currentPlayingProcess;
-            currentPlayingProcess = null;
-            _currentPlayingItem = null;
-            _currentVlcTime = 0;
-
-            // 2. Offload process killing and WaitForExit to a background thread
-            await Task.Run(() =>
-            {
-                if (procToKill != null)
-                {
-                    try
-                    {
-                        if (!procToKill.HasExited)
-                        {
-                            procToKill.Kill(entireProcessTree: true);
-                            procToKill.WaitForExit(1000);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Failed to kill tracked VLC process: {ex.Message}");
-                    }
-                }
-
-                // Fallback: Force kill ANY vlc process running if still open
-                try
-                {
-                    foreach (var proc in Process.GetProcessesByName("vlc"))
-                    {
-                        try
-                        {
-                            if (!proc.HasExited)
-                            {
-                                proc.Kill(entireProcessTree: true);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
-            });
-
-            // 3. Save state in background and refresh tree safely preserving selection view
             _backgroundSaveTask = Task.Run(() =>
             {
                 lock (_saveLock)
@@ -3118,9 +3076,8 @@ namespace MediaControlApp.Forms
                         _isProcessingStop = false;
 
                         string previouslySelectedShow = treeShows.SelectedNode?.Text;
-                        BuildShowTree(); // Refresh UI to reflect watched status
+                        BuildShowTree();
 
-                        // Restore selection so it doesn't go blank
                         if (!string.IsNullOrEmpty(previouslySelectedShow))
                         {
                             foreach (TreeNode node in treeShows.Nodes)
@@ -3185,21 +3142,20 @@ namespace MediaControlApp.Forms
             AppConfig.Save(latestSettings);
             _userSettings = latestSettings; // Keep local reference synced
 
-            // 2. Check if VLC process is currently running/playing
-            bool isPlaying = currentPlayingProcess != null && !currentPlayingProcess.HasExited;
+            // 2. Check if embedded video player is actively open
+            bool isPlaying = _activePlayerForm != null && !_activePlayerForm.IsDisposed;
 
             if (isPlaying)
             {
                 DialogResult autoPlayResult = DarkMessageBox.Show(
                     this,
-                    "Please click the Stop button to save your playback progress before closing the application.",
+                    "Please close the video player window or click Stop to save your playback progress before exiting.",
                     "Playback Active",
-                    "Use Stop button to save progress",
+                    "Close video player to exit",
                     MessageBoxButtons.OK,
-                    darkMode // Passes true for dark, false for light
+                    darkMode
                 );
 
-                // Cancel the close operation and keep the form open
                 e.Cancel = true;
                 return;
             }
