@@ -2845,18 +2845,38 @@ namespace MediaControlApp.Forms
                             break; // Handled by btnStop_Click logic
                         }
 
-                        // Check if VLC exited because it finished naturally or if the user closed it manually
+                        // Check how VLC exited
                         if (currentPlayingProcess != null && currentPlayingProcess.HasExited)
                         {
-                            // If video duration is known and we are within 5 seconds of the end, it finished naturally
-                            if (ep.Duration > TimeSpan.Zero && _currentVlcTime >= (ep.Duration.TotalSeconds - 5))
+                            // 1. If we know the duration, check if it reached near the end OR if it played for most of the video track
+                            if (ep.Duration > TimeSpan.Zero)
                             {
-                                finishedNaturally = true;
+                                // If it got within 15 seconds of the end, or played past 85% of its duration before closing
+                                if (_currentVlcTime >= (ep.Duration.TotalSeconds - 15) || sw.Elapsed.TotalSeconds >= (ep.Duration.TotalSeconds * 0.85))
+                                {
+                                    finishedNaturally = true;
+                                }
                             }
-                            else if (sw.Elapsed.TotalSeconds > 5 && ep.Duration == TimeSpan.Zero && _currentVlcTime > 0)
+
+                            // 2. If duration wasn't cached/known, check elapsed playback time vs reasonable threshold
+                            if (!finishedNaturally && ep.Duration == TimeSpan.Zero)
                             {
-                                // Fallback if duration wasn't cached yet but it played for a substantial amount of time and exited
-                                finishedNaturally = true;
+                                // If it played for more than 20 seconds and closed on its own (not instant abort)
+                                if (sw.Elapsed.TotalSeconds > 20)
+                                {
+                                    finishedNaturally = true;
+                                }
+                            }
+
+                            // 3. Fallback for short clips or edge cases where VLC exited cleanly via --play-and-exit
+                            // If the user didn't hit stop, and it ran for a decent amount of time relative to the last known position
+                            if (!finishedNaturally && sw.Elapsed.TotalSeconds > 10 && _currentVlcTime > userSavedPos)
+                            {
+                                // If it got very close to the end based on local tracking
+                                if (ep.Duration > TimeSpan.Zero && _currentVlcTime >= (ep.Duration.TotalSeconds * 0.8))
+                                {
+                                    finishedNaturally = true;
+                                }
                             }
                         }
 
@@ -2911,7 +2931,6 @@ namespace MediaControlApp.Forms
                         else
                         {
                             // User closed VLC manually (clicked X) before the video finished:
-                            // Save the current progress timestamp and break out of the queue loop so it won't auto-play next.
                             ep.SetSavedPosition(currentUser, _currentVlcTime);
 
                             var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -2926,7 +2945,6 @@ namespace MediaControlApp.Forms
                     }
                     catch (Exception ex)
                     {
-                        // Ignore error alerts if the user intentionally clicked Stop
                         if (!_userStoppedPlayback)
                         {
                             MessageBox.Show($"Playback error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -2936,7 +2954,7 @@ namespace MediaControlApp.Forms
                     finally
                     {
                         currentPlayingProcess?.Dispose();
-                        currentPlayingProcess = null; // Clean up safely only after loop exits
+                        currentPlayingProcess = null;
                     }
                 }
 
