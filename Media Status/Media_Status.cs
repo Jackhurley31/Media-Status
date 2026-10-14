@@ -385,6 +385,12 @@ namespace MediaControlApp.Forms
 
         private async void listEpisodes_MouseDoubleClick(object sender, MouseEventArgs e)
         {
+            // Prevent starting new playback if something is already playing
+            if (_isPlaying)
+            {
+                return;
+            }
+
             // Ensure the user double-clicked an actual item, not empty space
             ListViewHitTestInfo info = listEpisodes.HitTest(e.Location);
             if (info.Item != null && info.Item.Tag is MediaItem clickedEpisode)
@@ -398,7 +404,7 @@ namespace MediaControlApp.Forms
 
                 if (hasNextEpisodes)
                 {
-                    // Ask user if they want to auto-play remaining episodes in the list
+                    // Ask user if they want to auto-play subsequent episodes in this list
                     DialogResult autoPlayResult = DarkMessageBox.Show(
                         this,
                         "Would you like to auto-play subsequent episodes in this list?",
@@ -407,20 +413,13 @@ namespace MediaControlApp.Forms
                         darkMode // Passes true for dark, false for light
                     );
 
-
                     // If the user closed the window with X, stop playback execution
                     if (autoPlayResult == DialogResult.Cancel)
                     {
-                        _isPlaying = false;
                         return;
                     }
 
                     _isPlaying = true;
-
-                    if (autoPlayResult == DialogResult.Cancel)
-                    {
-                        return; // User canceled action
-                    }
 
                     if (autoPlayResult == DialogResult.Yes)
                     {
@@ -441,6 +440,7 @@ namespace MediaControlApp.Forms
                 else
                 {
                     // Last episode in season: play single item without prompting
+                    _isPlaying = true;
                     playbackQueue = new List<MediaItem> { clickedEpisode };
                 }
 
