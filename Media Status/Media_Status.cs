@@ -2817,6 +2817,8 @@ namespace MediaControlApp.Forms
                         currentPlayingProcess = Process.Start(startInfo);
                         if (currentPlayingProcess == null) continue;
 
+                        bool finishedNaturally = false;
+
                         // Monitor VLC process and poll for exact playback position
                         while (!currentPlayingProcess.HasExited && !_userStoppedPlayback)
                         {
@@ -2842,7 +2844,23 @@ namespace MediaControlApp.Forms
                         {
                             break; // Handled by btnStop_Click logic
                         }
-                        else if (sw.Elapsed.TotalSeconds > 3)
+
+                        // Check if VLC exited because it finished naturally or if the user closed it manually
+                        if (currentPlayingProcess != null && currentPlayingProcess.HasExited)
+                        {
+                            // If video duration is known and we are within 5 seconds of the end, it finished naturally
+                            if (ep.Duration > TimeSpan.Zero && _currentVlcTime >= (ep.Duration.TotalSeconds - 5))
+                            {
+                                finishedNaturally = true;
+                            }
+                            else if (sw.Elapsed.TotalSeconds > 5 && ep.Duration == TimeSpan.Zero && _currentVlcTime > 0)
+                            {
+                                // Fallback if duration wasn't cached yet but it played for a substantial amount of time and exited
+                                finishedNaturally = true;
+                            }
+                        }
+
+                        if (finishedNaturally)
                         {
                             // Episode finished completely: reset position and mark watched
                             ep.SetSavedPosition(currentUser, 0);
@@ -2889,6 +2907,21 @@ namespace MediaControlApp.Forms
                                 await ExecutePowerActionAsync();
                                 break; // Stop playing remaining episodes in the list
                             }
+                        }
+                        else
+                        {
+                            // User closed VLC manually (clicked X) before the video finished:
+                            // Save the current progress timestamp and break out of the queue loop so it won't auto-play next.
+                            ep.SetSavedPosition(currentUser, _currentVlcTime);
+
+                            var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
+                            if (masterItem != null)
+                            {
+                                masterItem.SetSavedPosition(currentUser, _currentVlcTime);
+                            }
+
+                            SaveAndMergeState();
+                            break;
                         }
                     }
                     catch (Exception ex)
