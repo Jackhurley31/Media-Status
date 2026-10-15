@@ -2,6 +2,8 @@
 
 **Media Status** is a lightweight, frontend media library manager built in C# WinForms for **VLC Media Player**. It brings modern TV show organization, season tracking, per-user progress logging, and automatic metadata fetching to local media libraries.
 
+Drop the .exe inside the folder of Media and run and it will create the library which you can view watch
+
 ---
 
 ## ✨ Features
