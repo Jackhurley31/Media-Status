@@ -31,3 +31,5 @@ If you find **Media Status** useful and want to support ongoing development, con
 * **C# / .NET / WinForms**
 * **VLC Media Player** (HTTP requests & process management)
 * **TVMaze API**
+
+[![](https://img.shields.io/github/v/release/Jackhurley31/Media-Status?label=Download%20Latest%20Release&style=for-the-badge)](https://github.com/Jackhurley31/Media-Status/releases/latest)
