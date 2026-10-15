@@ -20,7 +20,7 @@
 
 If you find **Media Status** useful and want to support ongoing development, consider buying me a tea!
 
-[![Buy Me A tea](https://ko-fi.com/jackhurley)
+(Buy Me A tea  (https://ko-fi.com/jackhurley)
 
 (Or click the **Support** button inside the app UI!)
 
