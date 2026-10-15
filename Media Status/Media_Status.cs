@@ -218,84 +218,84 @@ namespace MediaControlApp.Forms
 
         private void LoadSettings()
         {
-        userSettings = AppConfig.Load();    
-        darkMode = userSettings.DarkMode;
+            userSettings = AppConfig.Load();
+            darkMode = userSettings.DarkMode;
 
-        // Wrap the font application to prevent poster and UI layout bugs
-        this.SuspendLayout();
-        try
-        {
-            // Only apply custom font settings if they have actually been saved/configured
-            if (!string.IsNullOrEmpty(userSettings.UIFontFamily) && userSettings.UIFontSize > 0)
+            // Wrap the font application to prevent poster and UI layout bugs
+            this.SuspendLayout();
+            try
             {
-                FontHelper.ApplyFontToForm(this, userSettings.UIFontSize, userSettings.UIFontFamily);
+                // Only apply custom font settings if they have actually been saved/configured
+                if (!string.IsNullOrEmpty(userSettings.UIFontFamily) && userSettings.UIFontSize > 0)
+                {
+                    FontHelper.ApplyFontToForm(this, userSettings.UIFontSize, userSettings.UIFontFamily);
+                }
+
+                // Ensure poster scaling remains stable if applicable
+                if (picPoster != null)
+                {
+                    picPoster.SizeMode = PictureBoxSizeMode.Zoom;
+                }
+                this.PerformLayout();
+            }
+            finally
+            {
+                this.ResumeLayout(true);
             }
 
-            // Ensure poster scaling remains stable if applicable
-            if (picPoster != null)
-            {
-                picPoster.SizeMode = PictureBoxSizeMode.Zoom;
-            }
-            this.PerformLayout();
+            // Load saved window size, state, and position
+            LoadScreenSettings();
         }
-        finally
+
+        private void LoadScreenSettings()
         {
-            this.ResumeLayout(true);
-        }
+            cmbScreens.Items.Clear();
+            cmbScreens.Items.Add("Default / Unlocked (Follow Windows)");
 
-        // Load saved window size, state, and position
-        LoadScreenSettings();
-    }
+            var classifiedScreens = ScreenLayoutClassifier.GetClassifiedScreens();
 
-            private void LoadScreenSettings()
+            foreach (var info in classifiedScreens)
             {
-                cmbScreens.Items.Clear();
-                cmbScreens.Items.Add("Default / Unlocked (Follow Windows)");
-
-                var classifiedScreens = ScreenLayoutClassifier.GetClassifiedScreens();
-
-                foreach (var info in classifiedScreens)
-                {
-                    cmbScreens.Items.Add(info.Label);
-                }
-
-                cmbScreens.DropDownWidth = 340;
-
-                int targetIndex = _userSettings.TargetScreenIndex;
-                if (targetIndex >= 0 && targetIndex < classifiedScreens.Count)
-                {
-                    cmbScreens.SelectedIndex = targetIndex + 1;
-                }
-                else
-                {
-                    cmbScreens.SelectedIndex = 0;
-                }
-
-                chkFullscreen.Checked = _userSettings.EnableFullscreen;
-
-
-
-                splitContainer1.FixedPanel = FixedPanel.Panel1;
-
-                if (_userSettings != null)
-                {
-                    // Set outer split first
-                    if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
-                    {
-                        splitMain.SplitterDistance = _userSettings.SplitMainDistance;
-                    }
-
-                    // Then set inner split
-                    if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
-                    {
-                        splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
-                    }
-                }
-
-
-
-
+                cmbScreens.Items.Add(info.Label);
             }
+
+            cmbScreens.DropDownWidth = 340;
+
+            int targetIndex = _userSettings.TargetScreenIndex;
+            if (targetIndex >= 0 && targetIndex < classifiedScreens.Count)
+            {
+                cmbScreens.SelectedIndex = targetIndex + 1;
+            }
+            else
+            {
+                cmbScreens.SelectedIndex = 0;
+            }
+
+            chkFullscreen.Checked = _userSettings.EnableFullscreen;
+
+
+
+            splitContainer1.FixedPanel = FixedPanel.Panel1;
+
+            if (_userSettings != null)
+            {
+                // Set outer split first
+                if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
+                {
+                    splitMain.SplitterDistance = _userSettings.SplitMainDistance;
+                }
+
+                // Then set inner split
+                if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
+                {
+                    splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
+                }
+            }
+
+
+
+
+        }
 
 
 
@@ -2172,6 +2172,7 @@ namespace MediaControlApp.Forms
             ApplyButtonStyle(btnOrganiz, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(BtnAutoRename, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnAutoRenameOptions, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+            ApplyButtonStyle(btnSupport, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
 
 
 
@@ -3997,10 +3998,33 @@ namespace MediaControlApp.Forms
 
 
 
+        private void btnSupport_Click(object sender, EventArgs e)
+        {
+            //Ko-fi username link
+            string url = "https://ko-fi.com/jackhurley";
 
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                DarkMessageBox.Show(
+                    this,
+                    $"Could not open browser: {ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    darkMode
+                );
+            }
+        }
 
 
 
     }
-    
+
 }
