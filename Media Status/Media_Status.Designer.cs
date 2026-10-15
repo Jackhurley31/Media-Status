@@ -81,6 +81,7 @@ namespace MediaControlApp.Forms
             btnoptions = new Button();
             BtnFavourite = new Button();
             btnRefresh = new Button();
+            btnSupport = new Button();
             btnOrganiz = new Button();
             lblStatus = new Label();
             btnAutoRenameOptions = new Button();
@@ -93,7 +94,6 @@ namespace MediaControlApp.Forms
             chkSubtitles = new CheckBox();
             cmbScreens = new ComboBox();
             chkFullscreen = new CheckBox();
-            btnSupport = new Button();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -125,7 +125,7 @@ namespace MediaControlApp.Forms
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
-            splitMain.Size = new Size(1231, 504);
+            splitMain.Size = new Size(1231, 535);
             splitMain.SplitterDistance = 353;
             splitMain.TabIndex = 0;
             // 
@@ -144,7 +144,7 @@ namespace MediaControlApp.Forms
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
-            splitContainer1.Size = new Size(353, 504);
+            splitContainer1.Size = new Size(353, 535);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
@@ -167,7 +167,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 293);
+            treeShows.Size = new Size(353, 324);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -180,7 +180,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 504);
+            listEpisodes.Size = new Size(874, 535);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -229,12 +229,12 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 504);
+            layoutBottomPanel.Location = new Point(0, 535);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(1231, 156);
+            layoutBottomPanel.Size = new Size(1231, 125);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -246,11 +246,10 @@ namespace MediaControlApp.Forms
             flowLayoutPanel2.Controls.Add(txtSearch);
             flowLayoutPanel2.Controls.Add(OpenFileLocation);
             flowLayoutPanel2.Controls.Add(BtnCheckIMDb);
-            flowLayoutPanel2.Controls.Add(btnSupport);
             flowLayoutPanel2.Dock = DockStyle.Fill;
             flowLayoutPanel2.Location = new Point(3, 3);
             flowLayoutPanel2.Name = "flowLayoutPanel2";
-            flowLayoutPanel2.Size = new Size(609, 62);
+            flowLayoutPanel2.Size = new Size(609, 31);
             flowLayoutPanel2.TabIndex = 0;
             // 
             // btnCollapseAll
@@ -320,7 +319,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel3.Dock = DockStyle.Fill;
             flowLayoutPanel3.Location = new Point(618, 3);
             flowLayoutPanel3.Name = "flowLayoutPanel3";
-            flowLayoutPanel3.Size = new Size(610, 62);
+            flowLayoutPanel3.Size = new Size(610, 31);
             flowLayoutPanel3.TabIndex = 1;
             // 
             // btnDelete
@@ -403,8 +402,9 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Controls.Add(lblStatus);
             flowLayoutPanel1.Controls.Add(btnAutoRenameOptions);
             flowLayoutPanel1.Controls.Add(BtnAutoRename);
+            flowLayoutPanel1.Controls.Add(btnSupport);
             flowLayoutPanel1.Dock = DockStyle.Fill;
-            flowLayoutPanel1.Location = new Point(3, 71);
+            flowLayoutPanel1.Location = new Point(3, 40);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
             flowLayoutPanel1.Size = new Size(609, 82);
             flowLayoutPanel1.TabIndex = 2;
@@ -441,6 +441,17 @@ namespace MediaControlApp.Forms
             btnRefresh.TabIndex = 2;
             btnRefresh.Text = "Refresh";
             btnRefresh.Click += btnRefresh_Click;
+            // 
+            // btnSupport
+            // 
+            btnSupport.AutoSize = true;
+            btnSupport.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            btnSupport.Location = new Point(270, 34);
+            btnSupport.Name = "btnSupport";
+            btnSupport.Size = new Size(145, 25);
+            btnSupport.TabIndex = 5;
+            btnSupport.Text = "Support (buy me a tea)";
+            btnSupport.Click += btnSupport_Click;
             // 
             // btnOrganiz
             // 
@@ -492,7 +503,7 @@ namespace MediaControlApp.Forms
             gbActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             gbActions.Controls.Add(flowActionsInner);
             gbActions.Dock = DockStyle.Fill;
-            gbActions.Location = new Point(618, 71);
+            gbActions.Location = new Point(618, 40);
             gbActions.Name = "gbActions";
             gbActions.Size = new Size(610, 82);
             gbActions.TabIndex = 3;
@@ -581,18 +592,6 @@ namespace MediaControlApp.Forms
             chkFullscreen.Text = "Fullscreen";
             chkFullscreen.UseVisualStyleBackColor = true;
             chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
-            // 
-            // btnSupport
-            // 
-            btnSupport.AutoSize = true;
-            btnSupport.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnSupport.Location = new Point(3, 34);
-            btnSupport.Name = "btnSupport";
-            btnSupport.Size = new Size(145, 25);
-            btnSupport.TabIndex = 5;
-            btnSupport.Text = "Support (buy me a tea)";
-            btnSupport.Visible = false;
-            btnSupport.Click += btnSupport_Click;
             // 
             // MainForm
             // 
