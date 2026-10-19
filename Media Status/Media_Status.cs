@@ -3679,6 +3679,70 @@ namespace MediaControlApp.Forms
             }
         }
 
+
+
+        private void BtnCheckTVMAZE_Click(object sender, EventArgs e)
+        {
+            string targetToClean = null;
+
+            if (treeShows != null && treeShows.SelectedNode != null)
+            {
+                TreeNode node = treeShows.SelectedNode;
+
+                if (node.Tag is List<MediaItem> items && items.Count > 0)
+                {
+                    // Use the CachedSeriesName if available, or pass the full file path
+                    targetToClean = !string.IsNullOrWhiteSpace(items[0].CachedSeriesName)
+                        ? items[0].CachedSeriesName
+                        : BuildFullPath(items[0].FilePath);
+                }
+                else if (node.Tag is MediaItem item)
+                {
+                    targetToClean = !string.IsNullOrWhiteSpace(item.CachedSeriesName)
+                        ? item.CachedSeriesName
+                        : BuildFullPath(item.FilePath);
+                }
+                else if (!string.IsNullOrWhiteSpace(node.Text))
+                {
+                    targetToClean = node.Text;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(targetToClean))
+            {
+                DarkMessageBox.Show(this, "Please select a media item or node first.", "No Selection", MessageBoxButtons.OK, darkMode);
+                return;
+            }
+
+            string cleanTitle = CleanMediaTitle(targetToClean);
+
+            if (string.IsNullOrWhiteSpace(cleanTitle))
+            {
+                DarkMessageBox.Show(this, "Could not determine a valid title from the selection.", "Parsing Error", MessageBoxButtons.OK, darkMode);
+                return;
+            }
+
+            // TVMaze web search query URL
+            string searchUrl = $"https://www.tvmaze.com/search?q={Uri.EscapeDataString(cleanTitle)}";
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = searchUrl,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                DarkMessageBox.Show(this, $"Failed to open browser: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+            }
+        }
+
+
+
+
+
         private string CleanMediaTitle(string inputPathOrName)
         {
             if (string.IsNullOrWhiteSpace(inputPathOrName)) return string.Empty;
@@ -4023,8 +4087,7 @@ namespace MediaControlApp.Forms
             }
         }
 
-
-
+     
     }
 
 }
