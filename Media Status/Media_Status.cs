@@ -3375,44 +3375,225 @@ namespace MediaControlApp.Forms
 
         private void btnResume_Click(object sender, EventArgs e)
         {
-            TreeNode resumeNode = FindToFinishNode(treeShows.Nodes);
+            if (_isPlaying) return;
 
-            if (resumeNode == null) return;
+            // 1. Gather all in-progress nodes across the entire tree
+            List<TreeNode> pendingNodes = new List<TreeNode>();
+            FindAllToFinishNodes(treeShows.Nodes, pendingNodes);
 
-            // Select, reveal, and highlight the node
-            treeShows.SelectedNode = resumeNode;
-            resumeNode.EnsureVisible();
+            if (pendingNodes.Count == 0) return;
+
+            TreeNode targetNode = pendingNodes[0];
+
+            // 2. If multiple shows/seasons have saved progress, let the user pick which one to resume
+            if (pendingNodes.Count > 1)
+            {
+                targetNode = ShowResumeSelectionDialog(pendingNodes);
+                if (targetNode == null) return; // User canceled the dialog
+            }
+
+            // 3. Select and reveal the target node in treeShows
+            treeShows.SelectedNode = targetNode;
+            targetNode.EnsureVisible();
             treeShows.Focus();
 
-            // Ask user if they want to auto-play remaining episodes in the list
+            // 4. Prompt for auto-play preference
             DialogResult autoPlayResult = DarkMessageBox.Show(
                 this,
                 "Would you like to auto-play subsequent episodes in this list?",
                 "Auto Play",
                 MessageBoxButtons.YesNo,
-                darkMode // Passes true for dark, false for light
+                darkMode
             );
-
-            // If the user closed the window with X, stop playback execution
-            if (autoPlayResult == DialogResult.Cancel)
-            {
-                _isPlaying = false;
-                return;
-            }
-
-            _isPlaying = true;
-
 
             if (autoPlayResult == DialogResult.Cancel) return;
 
+            _isPlaying = true;
             bool autoPlay = (autoPlayResult == DialogResult.Yes);
 
-            // Trigger playback passing the auto-play preference
             this.BeginInvoke((MethodInvoker)delegate
             {
                 PlayFirstUnwatchedEpisode(autoPlay);
             });
         }
+
+
+
+        private void FindAllToFinishNodes(TreeNodeCollection nodes, List<TreeNode> resultList)
+        {
+            string currentUser = AppConfig.CurrentUser;
+
+            foreach (TreeNode node in nodes)
+            {
+                bool hasPendingItem = false;
+
+                if (node.Tag is List<MediaItem> mediaList)
+                {
+                    hasPendingItem = mediaList.Any(m => m.GetSavedPosition(currentUser) > 0 && !m.IsWatched(currentUser));
+                }
+                else if (node.Tag is MediaItem item)
+                {
+                    hasPendingItem = item.GetSavedPosition(currentUser) > 0 && !item.IsWatched(currentUser);
+                }
+
+                if (hasPendingItem)
+                {
+                    // Get the clean show title to ensure we don't add the same show twice (e.g. once in Continue, once in Main tree)
+                    string showTitle = node.Parent != null ? node.Parent.Text : node.Text;
+                    showTitle = showTitle.Replace("★ ", "").Trim();
+
+                    bool alreadyExists = resultList.Any(existing =>
+                    {
+                        string existingTitle = existing.Parent != null ? existing.Parent.Text : existing.Text;
+                        return existingTitle.Replace("★ ", "").Trim().Equals(showTitle, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                    if (!alreadyExists)
+                    {
+                        resultList.Add(node);
+                    }
+                }
+
+                // Recursively check child nodes
+                FindAllToFinishNodes(node.Nodes, resultList);
+            }
+        }
+
+
+
+        private TreeNode ShowResumeSelectionDialog(List<TreeNode> choices)
+        {
+            string currentUser = AppConfig.CurrentUser;
+
+            using (Form selectForm = new Form())
+            {
+                selectForm.Text = "Select Show to Resume";
+                selectForm.Size = new Size(480, 320);
+                selectForm.StartPosition = FormStartPosition.CenterParent;
+                selectForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                selectForm.MaximizeBox = false;
+                selectForm.MinimizeBox = false;
+
+                // Apply theme styling
+                Color backColor = darkMode ? Color.FromArgb(35, 35, 35) : SystemColors.Control;
+                Color textColor = darkMode ? Color.White : Color.Black;
+                Color controlBack = darkMode ? Color.FromArgb(45, 45, 45) : Color.White;
+
+                selectForm.BackColor = backColor;
+                selectForm.ForeColor = textColor;
+
+                Label lbl = new Label
+                {
+                    Text = "Multiple shows have saved progress. Choose which one to continue:",
+                    Dock = DockStyle.Top,
+                    Padding = new Padding(12, 12, 12, 6),
+                    AutoSize = true
+                };
+
+                ListBox lstChoices = new ListBox
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = controlBack,
+                    ForeColor = textColor,
+                    Font = new Font("Segoe UI", 9.75f, FontStyle.Regular),
+                    IntegralHeight = false
+                };
+
+                // Populate options with Show Name / Season / Episode details
+                Dictionary<int, TreeNode> choiceMapping = new Dictionary<int, TreeNode>();
+
+                for (int i = 0; i < choices.Count; i++)
+                {
+                    TreeNode node = choices[i];
+                    string labelText = node.Text.Replace("★ ", "").Trim();
+
+                    // Build hierarchical display name (e.g. "Stargate Atlantis -> Season 5")
+                    if (node.Parent != null)
+                    {
+                        labelText = $"{node.Parent.Text.Replace("★ ", "").Trim()} — {labelText}";
+                    }
+
+                    // Get first pending episode details
+                    MediaItem pendingItem = null;
+                    if (node.Tag is List<MediaItem> mediaList)
+                    {
+                        pendingItem = mediaList.FirstOrDefault(m => m.GetSavedPosition(currentUser) > 0 && !m.IsWatched(currentUser));
+                    }
+                    else if (node.Tag is MediaItem item)
+                    {
+                        pendingItem = item;
+                    }
+
+                    if (pendingItem != null)
+                    {
+                        TimeSpan savedTime = TimeSpan.FromSeconds(pendingItem.GetSavedPosition(currentUser));
+                        string timeDisplay = savedTime.Hours > 0 ? savedTime.ToString(@"h\:mm\:ss") : savedTime.ToString(@"mm\:ss");
+                        labelText += $" (Resume at {timeDisplay} - S{pendingItem.CachedSeason:D2}E{pendingItem.CachedEpisode:D2})";
+                    }
+
+                    int addedIdx = lstChoices.Items.Add(labelText);
+                    choiceMapping[addedIdx] = node;
+                }
+
+                lstChoices.SelectedIndex = 0; // Default selection
+
+                Panel btnPanel = new Panel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 45,
+                    Padding = new Padding(8)
+                };
+
+                Button btnOk = new Button
+                {
+                    Text = "Resume Selected",
+                    DialogResult = DialogResult.OK,
+                    Width = 130,
+                    Height = 28,
+                    Dock = DockStyle.Right,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.FromArgb(0, 122, 204),
+                    ForeColor = Color.White
+                };
+
+                Button btnCancel = new Button
+                {
+                    Text = "Cancel",
+                    DialogResult = DialogResult.Cancel,
+                    Width = 80,
+                    Height = 28,
+                    Dock = DockStyle.Right,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = darkMode ? Color.FromArgb(60, 64, 67) : SystemColors.Control,
+                    ForeColor = textColor
+                };
+
+                // Double-clicking an item in the list immediately resumes it
+                lstChoices.DoubleClick += (s, e) =>
+                {
+                    if (lstChoices.SelectedIndex >= 0)
+                    {
+                        selectForm.DialogResult = DialogResult.OK;
+                        selectForm.Close();
+                    }
+                };
+
+                btnPanel.Controls.Add(btnOk);
+                btnPanel.Controls.Add(btnCancel);
+
+                selectForm.Controls.Add(lstChoices);
+                selectForm.Controls.Add(lbl);
+                selectForm.Controls.Add(btnPanel);
+
+                if (selectForm.ShowDialog(this) == DialogResult.OK && lstChoices.SelectedIndex >= 0)
+                {
+                    return choiceMapping[lstChoices.SelectedIndex];
+                }
+
+                return null;
+            }
+        }
+
 
         private void PlayFirstUnwatchedEpisode(bool autoPlay = true)
         {
@@ -3455,35 +3636,7 @@ namespace MediaControlApp.Forms
             _ = PlayEpisodesQueueAsync(playbackQueue);
         }
 
-        private TreeNode FindToFinishNode(TreeNodeCollection nodes)
-        {
-            string currentUser = AppConfig.CurrentUser;
-
-            foreach (TreeNode node in nodes)
-            {
-                // 1. Check List<MediaItem> tags (Season and Film nodes)
-                if (node.Tag is List<MediaItem> mediaList &&
-                    mediaList.Any(m => m.GetSavedPosition(currentUser) > 0 && !m.IsWatched(currentUser)))
-                {
-                    return node;
-                }
-
-                // 2. Check single MediaItem tags
-                if (node.Tag is MediaItem item &&
-                    item.GetSavedPosition(currentUser) > 0 && !item.IsWatched(currentUser))
-                {
-                    return node;
-                }
-
-                // 3. Search recursively through parent nodes (Show folders)
-                TreeNode match = FindToFinishNode(node.Nodes);
-                if (match != null) return match;
-            }
-
-            return null;
-        }
-
-
+       
 
         private void btnResume_MouseDown(object sender, MouseEventArgs e)
         {
