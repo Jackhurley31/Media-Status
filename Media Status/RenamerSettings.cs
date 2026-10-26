@@ -163,17 +163,17 @@ namespace MediaStatus
                 ? "{Show} - S{Season}E{Episode} - {Title}"
                 : defaultPattern;
 
-            // Load saved settings, but default to true if it's the first run / uninitialized
-            itemIncludeShow.Checked = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern) ? true : Settings.Default.RenameIncludeShow;
-            itemPadNumbers.Checked = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern) ? true : Settings.Default.RenamePadNumbers;
-            itemReplaceWithSpaces.Checked = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern) ? true : Settings.Default.RenameReplaceWithSpaces;
-            itemReplaceDots.Checked = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern) ? true : Settings.Default.RenameReplaceDots;
-            itemRemoveSpecial.Checked = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern) ? true : Settings.Default.RenameRemoveSpecial;
+            // Default all formatting options to true on first run
+            bool isFirstRun = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern);
+
+            itemIncludeShow.Checked = isFirstRun ? true : Settings.Default.RenameIncludeShow;
+            itemPadNumbers.Checked = isFirstRun ? true : Settings.Default.RenamePadNumbers;
+            itemReplaceWithSpaces.Checked = isFirstRun ? true : Settings.Default.RenameReplaceWithSpaces;
+            itemReplaceDots.Checked = isFirstRun ? true : Settings.Default.RenameReplaceDots;
+            itemRemoveSpecial.Checked = isFirstRun ? true : Settings.Default.RenameRemoveSpecial;
 
             UpdatePreview();
         }
-
-
 
         private void btnSave_Click(object sender, EventArgs e)
         {
@@ -186,9 +186,5 @@ namespace MediaStatus
 
             Settings.Default.Save(); // Save settings persistently
         }
-
-
-
-
     }
 }
