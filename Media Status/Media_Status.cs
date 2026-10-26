@@ -612,12 +612,22 @@ namespace MediaControlApp.Forms
                 var filmItems = itemsToDisplay.Where(IsFilmItem).ToList();
                 var tvItems = itemsToDisplay.Except(filmItems).ToList();
 
-                // 3. Create "Continue" node at Index 0 if any show has unwatched progress remaining
+                // 3. Create "Continue" node at Index 0 if any show has progress, markup data, or an unfinished first episode
                 TreeNode topContinueNode = null;
                 var hasContinueItems = tvItems
                     .GroupBy(i => i.CachedSeriesName)
-                    .Any(g => g.Any(ep => ep.IsWatched(AppConfig.CurrentUser)) &&
-                              !g.All(ep => ep.IsWatched(AppConfig.CurrentUser)));
+                    .Any(g =>
+                    {
+                        var showList = g.ToList();
+                        bool hasProgressOrMarkup = showList.Any(ep => ep.IsWatched(AppConfig.CurrentUser) || ep.GetSavedPosition(AppConfig.CurrentUser) > 0);
+
+                        bool firstEpNeedsFinishing = showList
+                            .FirstOrDefault(ep => ep.CachedSeason == 1 && ep.CachedEpisode == 1) is MediaItem firstEp &&
+                            firstEp.GetSavedPosition(AppConfig.CurrentUser) > 0 &&
+                            !firstEp.IsWatched(AppConfig.CurrentUser);
+
+                        return (hasProgressOrMarkup || firstEpNeedsFinishing) && !showList.All(ep => ep.IsWatched(AppConfig.CurrentUser));
+                    });
 
                 if (hasContinueItems)
                 {
@@ -785,7 +795,12 @@ namespace MediaControlApp.Forms
                     string showNodeText = isShowFav ? "★ " + showNameClean : showNameClean;
 
                     bool isEntireShowWatched = allShowItems.Count > 0 && allShowItems.All(ep => ep.IsWatched(AppConfig.CurrentUser));
-                    bool hasAnyWatchedEpisode = allShowItems.Any(ep => ep.IsWatched(AppConfig.CurrentUser));
+                    bool hasAnyWatchedOrProgress = allShowItems.Any(ep => ep.IsWatched(AppConfig.CurrentUser) || ep.GetSavedPosition(AppConfig.CurrentUser) > 0);
+
+                    bool firstEpNeedsFinishing = allShowItems
+                        .FirstOrDefault(ep => ep.CachedSeason == 1 && ep.CachedEpisode == 1) is MediaItem firstEp &&
+                        firstEp.GetSavedPosition(AppConfig.CurrentUser) > 0 &&
+                        !firstEp.IsWatched(AppConfig.CurrentUser);
 
                     TreeNode showNode;
 
@@ -801,9 +816,9 @@ namespace MediaControlApp.Forms
 
                         showNode = topWatchedNode.Nodes.Add(showNodeText);
                     }
-                    else if (hasAnyWatchedEpisode && topContinueNode != null)
+                    else if ((hasAnyWatchedOrProgress || firstEpNeedsFinishing) && topContinueNode != null)
                     {
-                        // Route partially watched shows to "Continue" at top
+                        // Route partially watched or started shows (including Episode 1 with ToFinish markup) to "Continue" at top
                         showNode = topContinueNode.Nodes.Add(showNodeText);
                     }
                     else
@@ -1374,7 +1389,7 @@ namespace MediaControlApp.Forms
         {
             // Snapshot state variables on UI thread before hopping to background thread
             var localItemsSnapshot = items.ToList();
-            var currentUser = AppConfig.CurrentUser;
+            var currentUser = AppConfig.CurrentUser ?? "Default";
             var jsonPath = JsonPath;
 
             await Task.Run(() =>
@@ -1384,15 +1399,14 @@ namespace MediaControlApp.Forms
                 {
                     try
                     {
-                        // 1. Create backup on background thread
+                        // 1. Create backup on background thread[cite: 1]
                         CreateJsonBackup();
 
-                        // 2. Read and merge disk state on background thread
+                        // 2. Read disk state on background thread to preserve OTHER users' progress
                         if (File.Exists(jsonPath))
                         {
                             var diskItems = MediaCache.Load(jsonPath);
 
-                            // Index local items into a dictionary for O(1) lookups instead of O(N) LINQ scans
                             var localDict = localItemsSnapshot.ToDictionary(
                                 i => i.FilePath,
                                 i => i,
@@ -1406,7 +1420,15 @@ namespace MediaControlApp.Forms
                                 {
                                     localItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                                     localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                                    localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
+                                    // Capture and protect the CURRENT user's live in-memory state 
+                                    // so a disk read can NEVER wipe out what was just watched/marked!
+                                    bool hasInMemWatched = localItem.WatchedByUser.TryGetValue(currentUser, out var memWatched) && memWatched;
+                                    bool hasInMemFav = localItem.FavouriteByUser.TryGetValue(currentUser, out var memFav) && memFav;
+                                    double inMemPos = localItem.SavedPositionByUser.TryGetValue(currentUser, out var memPos) ? memPos : 0;
+
+                                    // Merge other users' data from disk
                                     if (diskItem.WatchedByUser != null)
                                     {
                                         foreach (var kvp in diskItem.WatchedByUser)
@@ -1435,32 +1457,36 @@ namespace MediaControlApp.Forms
                                         {
                                             if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
                                             {
-                                                localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
                                                 localItem.SavedPositionByUser[kvp.Key] = kvp.Value;
                                             }
                                         }
                                     }
+
+                                    // RESTORE current user's live in-memory state explicitly
+                                    localItem.WatchedByUser[currentUser] = hasInMemWatched || (diskItem.WatchedByUser?.TryGetValue(currentUser, out var dWatch) == true && dWatch);
+                                    localItem.FavouriteByUser[currentUser] = hasInMemFav || (diskItem.FavouriteByUser?.TryGetValue(currentUser, out var dFav) == true && dFav);
+
+                                    // If memory position is 0 (finished) or has a value, honor memory first, else fallback to disk
+                                    localItem.SavedPositionByUser[currentUser] = inMemPos > 0 ? inMemPos : (diskItem.SavedPositionByUser?.TryGetValue(currentUser, out var dPos) == true ? dPos : 0);
                                 }
                             }
                         }
 
-                        // 3. Save merged items to master file & local fast cache
+                        // 3. Save merged items to master file & local fast cache[cite: 1]
                         MediaCache.Save(jsonPath, localItemsSnapshot);
                         MediaCache.SaveLocal(localItemsSnapshot);
 
-                        // Success — break out of retry loop
-                        break;
+                        break; // Success
                     }
                     catch (IOException ex) when (retries > 1)
                     {
-                        // File locked by another user or process — wait 150ms before retrying
                         retries--;
-                        System.Diagnostics.Debug.WriteLine($"File locked by another instance. Retrying... ({retries} left)");
+                        System.Diagnostics.Debug.WriteLine($"File locked by another instance. Retrying... ({retries} left)[cite: 1]");
                         Thread.Sleep(150);
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"SaveAndMergeState trace: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"SaveAndMergeState trace: {ex.Message}[cite: 1]");
                         break;
                     }
                 }
@@ -2613,41 +2639,71 @@ namespace MediaControlApp.Forms
 
         private async void btnMarkWatched_Click(object sender, EventArgs e)
         {
+            if (_isPlaying)
+            {
+                DarkMessageBox.Show(
+                    this,
+                    "Cannot modify watch status while media is currently playing. Please stop playback first.",
+                    "Action Blocked",
+                    MessageBoxButtons.OK,
+                    darkMode
+                );
+                return;
+            }
+
             if (listEpisodes.SelectedItems.Count == 0)
                 return;
+
+            string currentUser = AppConfig.CurrentUser;
+            if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
 
             foreach (ListViewItem li in listEpisodes.SelectedItems)
             {
                 if (li.Tag is MediaItem ep)
                 {
-                    if (!ep.IsWatched(AppConfig.CurrentUser))
-                    {
-                        ep.MarkWatched(AppConfig.CurrentUser);
-                    }
-                    else
-                    {
-                        if (ep.WatchedByUser.ContainsKey(AppConfig.CurrentUser))
-                        {
-                            ep.WatchedByUser[AppConfig.CurrentUser] = false;
-                        }
-                    }
+                    // Ensure dictionary is initialized
+                    ep.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
-                    // Reset saved playback progress to 0 so it is no longer flagged as ToFinish
-                    ep.SetSavedPosition(AppConfig.CurrentUser, 0);
+                    // Check current watched status
+                    bool currentlyWatched = ep.IsWatched(currentUser);
 
+                    // Explicitly toggle the watched state (true -> false, or false -> true)
+                    ep.WatchedByUser[currentUser] = !currentlyWatched;
+
+                    // Reset saved playback progress to 0 when toggling watched state
+                    ep.SetSavedPosition(currentUser, 0);
+
+                    // Also update the master items list reference directly
                     var masterItem = items.FirstOrDefault(i => string.Equals(i.FilePath, ep.FilePath, StringComparison.OrdinalIgnoreCase));
                     if (masterItem != null)
                     {
-                        masterItem.SetSavedPosition(AppConfig.CurrentUser, 0);
+                        masterItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                        masterItem.WatchedByUser[currentUser] = !currentlyWatched;
+                        masterItem.SetSavedPosition(currentUser, 0);
                     }
 
-                    // Refresh column text
-                    bool isPartial = ep.GetSavedPosition(AppConfig.CurrentUser) > 0 && !ep.IsWatched(AppConfig.CurrentUser);
+                    // Update UI list view row immediately
+                    bool isPartial = ep.GetSavedPosition(currentUser) > 0 && !ep.IsWatched(currentUser);
                     li.SubItems[4].Text = GetWatchedDisplay(ep, isPartial);
                 }
             }
 
-            await Task.Run(() => SaveAndMergeState());
+            // Force an immediate synchronous write to bypass background merge delays
+            await Task.Run(() =>
+            {
+                lock (_saveLock)
+                {
+                    try
+                    {
+                        MediaCache.Save(JsonPath, items);
+                        MediaCache.SaveLocal(items);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to save mark state: {ex.Message}");
+                    }
+                }
+            });
 
             // Instantly refresh tree structure and Resume button state
             BuildShowTree();
