@@ -17,7 +17,11 @@ namespace Media_Status
     public class FileOrganizer
     {
         private static readonly Regex TvPattern = new(
-            @"\b(S\d{1,2}E\d{1,2}|\d{1,2}x\d{1,2}|Season\s*\d+|Episode\s*\d+)\b",
+            @"\b(S(\d{1,2})E\d{1,2}|(\d{1,2})x\d{1,2}|Season\s*(\d{1,2})|Episode\s*\d{1,2})\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex SeasonExtractor = new(
+            @"(?:S(\d{1,2})E\d{1,2}|(\d{1,2})x\d{1,2}|Season\s*(\d{1,2}))",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex ReleaseTagsPattern = new(
@@ -57,36 +61,89 @@ namespace Media_Status
 
                 foreach (var file in looseFiles)
                 {
-                    string fileName = Path.GetFileNameWithoutExtension(file);
+                    string fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
                     string extension = Path.GetExtension(file);
+                    string fileName = Path.GetFileName(file);
 
-                    // Clean up separators and release tags
-                    string cleanFileName = Regex.Replace(fileName, @"[\._\-]+", " ").Trim();
-                    cleanFileName = ReleaseTagsPattern.Replace(cleanFileName, "").Trim();
-                    cleanFileName = Regex.Replace(cleanFileName, @"\s+", " ");
+                    bool isTvShow = TvPattern.IsMatch(fileNameWithoutExt);
 
-                    bool isTvShow = TvPattern.IsMatch(fileName);
-
-                    // 1. Check if the file belongs to an existing TV directory
-                    string matchingDir = existingDirectories.FirstOrDefault(d =>
+                    if (isTvShow)
                     {
-                        string dirName = Path.GetFileName(d);
-                        string cleanDirName = Regex.Replace(dirName, @"[\._\-]+", " ").Trim();
-                        return cleanFileName.Contains(cleanDirName, StringComparison.OrdinalIgnoreCase);
-                    });
+                        // 1. Extract Season Number
+                        int seasonNumber = 1; // Default fallback
+                        var seasonMatch = SeasonExtractor.Match(fileNameWithoutExt);
+                        if (seasonMatch.Success)
+                        {
+                            if (seasonMatch.Groups[1].Success) int.TryParse(seasonMatch.Groups[1].Value, out seasonNumber);
+                            else if (seasonMatch.Groups[2].Success) int.TryParse(seasonMatch.Groups[2].Value, out seasonNumber);
+                            else if (seasonMatch.Groups[3].Success) int.TryParse(seasonMatch.Groups[3].Value, out seasonNumber);
+                        }
 
-                    if (matchingDir != null)
-                    {
-                        string destPath = Path.Combine(matchingDir, Path.GetFileName(file));
+                        // 2. Extract Show Name by splitting from the season/episode tag onwards
+                        string showName = fileNameWithoutExt;
+                        int tvPatternIdx = fileNameWithoutExt.IndexOf(seasonMatch.Value, StringComparison.OrdinalIgnoreCase);
+                        if (tvPatternIdx > 0)
+                        {
+                            showName = fileNameWithoutExt.Substring(0, tvPatternIdx);
+                        }
+
+                        // Clean up show name formatting
+                        showName = Regex.Replace(showName, @"[\._\-]+", " ").Trim();
+                        showName = ReleaseTagsPattern.Replace(showName, "").Trim();
+                        showName = Regex.Replace(showName, @"\s+", " ").Trim();
+
+                        if (string.IsNullOrWhiteSpace(showName))
+                        {
+                            untouchedCount++;
+                            continue;
+                        }
+
+                        // 3. Find or Create Show Folder
+                        string showDir = existingDirectories.FirstOrDefault(d =>
+                        {
+                            string dirName = Path.GetFileName(d);
+                            string cleanDirName = Regex.Replace(dirName, @"[\._\-]+", " ").Trim();
+                            return string.Equals(cleanDirName, showName, StringComparison.OrdinalIgnoreCase) ||
+                                   showName.Contains(cleanDirName, StringComparison.OrdinalIgnoreCase) ||
+                                   cleanDirName.Contains(showName, StringComparison.OrdinalIgnoreCase);
+                        });
+
+                        if (showDir == null)
+                        {
+                            showDir = Path.Combine(rootFolder, showName);
+                            Directory.CreateDirectory(showDir);
+                            if (!existingDirectories.Contains(showDir, StringComparer.OrdinalIgnoreCase))
+                            {
+                                existingDirectories.Add(showDir);
+                            }
+                        }
+
+                        // 4. Find or Create Season Folder inside Show Folder (e.g., "Season 1")
+                        string seasonFolderName = $"Season {seasonNumber}";
+                        string seasonDir = Directory.GetDirectories(showDir)
+                            .FirstOrDefault(d => Regex.IsMatch(Path.GetFileName(d), $@"^(Season\s*0*{seasonNumber}|S0*{seasonNumber})\b", RegexOptions.IgnoreCase));
+
+                        if (seasonDir == null)
+                        {
+                            seasonDir = Path.Combine(showDir, seasonFolderName);
+                            Directory.CreateDirectory(seasonDir);
+                        }
+
+                        // 5. Move file to the correct season subfolder
+                        string destPath = Path.Combine(seasonDir, fileName);
                         if (!File.Exists(destPath) && !string.Equals(file, destPath, StringComparison.OrdinalIgnoreCase))
                         {
                             File.Move(file, destPath);
-                            result.MovedLog.Add($"• {Path.GetFileName(file)}  ➔  {Path.GetFileName(matchingDir)}");
+                            result.MovedLog.Add($"• {fileName}  ➔  {Path.GetFileName(showDir)}\\{Path.GetFileName(seasonDir)}");
                         }
                     }
-                    // 2. If it's NOT a TV show and has no matching folder, treat as a Film
-                    else if (!isTvShow)
+                    else
                     {
+                        // Treat as a Film
+                        string cleanFileName = Regex.Replace(fileNameWithoutExt, @"[\._\-]+", " ").Trim();
+                        cleanFileName = ReleaseTagsPattern.Replace(cleanFileName, "").Trim();
+                        cleanFileName = Regex.Replace(cleanFileName, @"\s+", " ");
+
                         string filmsBaseDir = Path.Combine(rootFolder, "Films");
                         string movieFolder = Path.Combine(filmsBaseDir, cleanFileName);
 
@@ -96,15 +153,11 @@ namespace Media_Status
                         }
 
                         string destPath = Path.Combine(movieFolder, cleanFileName + extension);
-                        if (!File.Exists(destPath))
+                        if (!File.Exists(destPath) && !string.Equals(file, destPath, StringComparison.OrdinalIgnoreCase))
                         {
                             File.Move(file, destPath);
-                            result.MovedLog.Add($"• {Path.GetFileName(file)}  ➔  Films\\{cleanFileName}");
+                            result.MovedLog.Add($"• {fileName}  ➔  Films\\{cleanFileName}");
                         }
-                    }
-                    else
-                    {
-                        untouchedCount++;
                     }
                 }
 

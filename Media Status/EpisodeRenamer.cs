@@ -40,6 +40,11 @@ public static class EpisodeRenamer
             {
                 return;
             }
+            else
+            {
+                // User chose "No" (New Rename): clear old history
+                _lastRenameHistory.Clear();
+            }
         }
 
         List<MediaItem> itemsToRename = new();
@@ -352,6 +357,8 @@ public static class EpisodeRenamer
                 }
                 else
                 {
+                    //Clear history when keeping changes so subsequent auto-renames won't trigger the Revert window
+                    _lastRenameHistory.Clear();
                     DarkMessageBox.Show(parentForm, "Changes kept successfully!", "Rename Complete", MessageBoxButtons.OK, darkMode);
                 }
             }

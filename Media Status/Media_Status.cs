@@ -1857,12 +1857,24 @@ namespace MediaControlApp.Forms
                     ? $"{sw.ElapsedMilliseconds}ms"
                     : $"{sw.Elapsed.TotalSeconds:F1}s";
 
-                MessageBox.Show($"Scan completed in {durationStr}.\nTotal files found: {items.Count}",
-                                "Refresh Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                // Show a self-closing notification that automatically disappears after 5 seconds
+                ShowAutoClosingBox(
+                    this,
+                    $"Scan completed in {durationStr}.\nTotal files found: {items.Count}",
+                    "Refresh Complete",
+                    5000, // 5 seconds
+                    darkMode
+                );
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Refresh failed: {ex.Message}", "Scan Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                DarkMessageBox.Show(
+                    this,
+                    $"Refresh failed: {ex.Message}",
+                    "Scan Error",
+                    MessageBoxButtons.OK,
+                    darkMode
+                );
             }
             finally
             {
@@ -1876,6 +1888,45 @@ namespace MediaControlApp.Forms
                 _isRefreshing = false;
             }
         }
+
+
+
+        private void ShowAutoClosingBox(Form owner, string message, string title, int timeoutMillis, bool isDarkMode)
+        {
+            using (var box = new Form())
+            {
+                box.Text = title;
+                box.StartPosition = FormStartPosition.CenterParent;
+                box.FormBorderStyle = FormBorderStyle.FixedDialog;
+                box.MaximizeBox = false;
+                box.MinimizeBox = false;
+                box.ClientSize = new Size(320, 140);
+
+                box.BackColor = isDarkMode ? Color.FromArgb(35, 35, 35) : SystemColors.Control;
+                box.ForeColor = isDarkMode ? Color.White : Color.Black;
+
+                var lbl = new Label
+                {
+                    Text = message,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Font = new Font("Segoe UI", 10f, FontStyle.Regular)
+                };
+
+                var timer = new System.Windows.Forms.Timer { Interval = timeoutMillis };
+                timer.Tick += (s, e) =>
+                {
+                    timer.Stop();
+                    box.Close();
+                };
+                timer.Start();
+
+                box.Controls.Add(lbl);
+                box.ShowDialog(owner);
+            }
+        }
+
+
 
 
 
@@ -2535,43 +2586,91 @@ namespace MediaControlApp.Forms
 
             if (itemsToProcess.Count == 0) return;
 
-            // 1. Single prompt strictly for file deletion
-            var confirm = MessageBox.Show(
-                $"Are you sure you want to PERMANENTLY delete {itemsToProcess.Count} media file(s)?\n\nFolders on disk will NOT be deleted.",
+            var confirm = DarkMessageBox.Show(
+                this,
+                $"Are you sure you want to PERMANENTLY delete {itemsToProcess.Count} media file(s)?\n\nEmpty parent folders will also be cleaned up safely.",
                 "Confirm Delete",
                 MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning
+                darkMode
             );
 
-            // Clicking 'No' stops execution immediately. Zero changes made.
             if (confirm != DialogResult.Yes) return;
 
             foreach (var ep in itemsToProcess) items.Remove(ep);
+
             listEpisodes.Items.Clear();
+            picPoster.Image = null;
+
+            this.Cursor = Cursors.WaitCursor;
 
             try
             {
-                // 2. Delete ONLY the files from disk
                 await Task.Run(() =>
                 {
+                    var affectedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                     foreach (var ep in itemsToProcess)
                     {
                         string fullPath = BuildFullPath(ep.FilePath);
                         if (File.Exists(fullPath))
                         {
+                            string dir = Path.GetDirectoryName(fullPath);
+                            if (!string.IsNullOrEmpty(dir))
+                            {
+                                affectedDirectories.Add(dir);
+                            }
+
                             File.Delete(fullPath);
                         }
+                    }
+
+                    foreach (var dir in affectedDirectories)
+                    {
+                        CleanupEmptyDirectoriesUpwards(dir, RootFolder);
                     }
 
                     SaveAndMergeState();
                 });
 
-                RefreshAll();
+                // Trigger the full refresh button workflow
+                btnRefresh_Click(sender, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Delete failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                RefreshAll();
+                DarkMessageBox.Show(this, $"Delete failed: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+                btnRefresh_Click(sender, EventArgs.Empty);
+            }
+            finally
+            {
+                this.Cursor = Cursors.Default;
+            }
+        }
+
+        // Safe helper method to recursively delete empty parent folders without deleting loose root files or crossing boundaries
+        private void CleanupEmptyDirectoriesUpwards(string targetDir, string rootBoundary)
+        {
+            try
+            {
+                // Ensure we never delete the root folder itself or folders outside of it
+                while (!string.IsNullOrEmpty(targetDir) &&
+                       !string.Equals(targetDir, rootBoundary, StringComparison.OrdinalIgnoreCase) &&
+                       Directory.Exists(targetDir))
+                {
+                    // Only delete the directory if it is completely empty (no files and no subdirectories)
+                    if (!Directory.EnumerateFileSystemEntries(targetDir).Any())
+                    {
+                        Directory.Delete(targetDir, false);
+                        targetDir = Path.GetDirectoryName(targetDir); // Move up to parent folder
+                    }
+                    else
+                    {
+                        break; // Stop if the folder still contains other files or sibling seasons
+                    }
+                }
+            }
+            catch
+            {
+                // Fail silently so file deletion isn't interrupted by locked handles or permission hitches
             }
         }
 
@@ -2595,17 +2694,22 @@ namespace MediaControlApp.Forms
 
             if (itemsToProcess.Count == 0) return;
 
-            var confirm = MessageBox.Show(
-                $"Are you sure you want to archive {itemsToProcess.Count} selected item(s)?",
+            var confirm = DarkMessageBox.Show(
+                this,
+                $"Are you sure you want to archive {itemsToProcess.Count} selected item(s)?\n\nEmpty parent folders will also be cleaned up safely.",
                 "Confirm Archive",
                 MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question
+                darkMode
             );
 
             if (confirm != DialogResult.Yes) return;
 
             foreach (var ep in itemsToProcess) items.Remove(ep);
+
             listEpisodes.Items.Clear();
+            picPoster.Image = null;
+
+            this.Cursor = Cursors.WaitCursor;
 
             try
             {
@@ -2614,25 +2718,45 @@ namespace MediaControlApp.Forms
                     string archiveRoot = Path.Combine(RootFolder, "Archive");
                     Directory.CreateDirectory(archiveRoot);
 
+                    var affectedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                     foreach (var ep in itemsToProcess)
                     {
                         string fullPath = BuildFullPath(ep.FilePath);
                         if (File.Exists(fullPath))
                         {
+                            string dir = Path.GetDirectoryName(fullPath);
+                            if (!string.IsNullOrEmpty(dir))
+                            {
+                                affectedDirectories.Add(dir);
+                            }
+
                             string relPath = Path.GetRelativePath(RootFolder, fullPath);
                             string destPath = Path.Combine(archiveRoot, relPath);
                             Directory.CreateDirectory(Path.GetDirectoryName(destPath));
                             File.Move(fullPath, destPath, true);
                         }
                     }
-                    SaveAndMergeState(); ;
+
+                    foreach (var dir in affectedDirectories)
+                    {
+                        CleanupEmptyDirectoriesUpwards(dir, RootFolder);
+                    }
+
+                    SaveAndMergeState();
                 });
-                RefreshAll();
+
+                // Trigger the full refresh button workflow
+                btnRefresh_Click(sender, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Archive failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                RefreshAll();
+                DarkMessageBox.Show(this, $"Archive failed: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+                btnRefresh_Click(sender, EventArgs.Empty);
+            }
+            finally
+            {
+                this.Cursor = Cursors.Default;
             }
         }
 
@@ -3277,6 +3401,12 @@ namespace MediaControlApp.Forms
             {
                 System.Diagnostics.Debug.WriteLine($"Error during startup check: {ex.Message}");
             }
+
+            // Automatically trigger a full refresh scan on startup after the form renders
+            this.BeginInvoke((MethodInvoker)(() =>
+            {
+                btnRefresh_Click(sender, EventArgs.Empty);
+            }));
         }
 
 
@@ -3342,13 +3472,16 @@ namespace MediaControlApp.Forms
 
         private async void btnOrganiz_Click(object sender, EventArgs e)
         {
-            // Execute worker logic on a background thread or directly
-            var result = FileOrganizer.OrganizeLooseFiles(RootFolder, VideoExtensions);
+            // Execute worker logic on a background thread
+            var result = await Task.Run(() => FileOrganizer.OrganizeLooseFiles(RootFolder, VideoExtensions));
 
-            // Update Form UI
+            // Update Form UI Labels
             _lastMovedLog = result.MovedLog;
             lblStatus.Text = result.StatusText;
             lblStatus.Cursor = result.StatusCursor;
+
+            //full scan and UI rebuild so Auto-Rename can pick up the new paths immediately
+            RefreshAll();
         }
 
         private void lblStatus_Click(object sender, EventArgs e)
