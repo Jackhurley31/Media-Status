@@ -10,7 +10,7 @@
     <StartupObject>MediaControlApp.Program</StartupObject>
     <ApplicationIcon>Icon\Media Status_Icon.ico</ApplicationIcon>
     <Configurations>Debug;Release;Debugtest</Configurations>
-	<VersionPrefix>5.0.0</VersionPrefix>
+	<VersionPrefix>6.0.0</VersionPrefix>
   </PropertyGroup>
 
   <ItemGroup>
