@@ -28,7 +28,7 @@ public static class EpisodeRenamer
         if (_lastRenameHistory.Count > 0)
         {
             var revertAsk = DarkMessageBox.Show(parentForm,
-                $"Found {_lastRenameHistory.Count} recently renamed file(s) from the last session.\n\nDo you want to **Revert** back to their original names, or perform a **New Rename**?",
+                $"Found {_lastRenameHistory.Count} recently renamed file(s) in this app session.\n\nDo you want to **Revert** back to their original names, or perform a **New Rename**?",
                 "Rename or Revert", MessageBoxButtons.YesNoCancel, darkMode);
 
             if (revertAsk == DialogResult.Yes)
@@ -39,11 +39,6 @@ public static class EpisodeRenamer
             else if (revertAsk == DialogResult.Cancel)
             {
                 return;
-            }
-            else
-            {
-                // User chose "No" (New Rename): clear old history
-                _lastRenameHistory.Clear();
             }
         }
 
@@ -202,8 +197,8 @@ public static class EpisodeRenamer
                 // API fallback
             }
 
-            _lastRenameHistory.Clear();
             int renamedCount = 0;
+            bool replacedUndoHistory = false;
 
             foreach (var item in itemsToRename)
             {
@@ -323,6 +318,12 @@ public static class EpisodeRenamer
                         File.Move(oldFullPath, newFullPath);
                     }
 
+                    if (!replacedUndoHistory)
+                    {
+                        _lastRenameHistory.Clear();
+                        replacedUndoHistory = true;
+                    }
+
                     _lastRenameHistory[newFullPath] = oldFullPath;
 
                     transferState(item, oldFullPath, newFullPath);
@@ -394,7 +395,7 @@ public static class EpisodeRenamer
 
         try
         {
-            foreach (var kvp in _lastRenameHistory)
+            foreach (var kvp in _lastRenameHistory.ToList())
             {
                 string currentPath = kvp.Key;
                 string originalPath = kvp.Value;
@@ -404,34 +405,38 @@ public static class EpisodeRenamer
                     Directory.CreateDirectory(Path.GetDirectoryName(originalPath) ?? string.Empty);
                     File.Move(currentPath, originalPath);
                     revertedCount++;
-                }
-            }
 
-            foreach (ListViewItem lvi in listEpisodes.Items)
-            {
-                if (lvi.Tag is MediaItem m)
-                {
-                    string fullCurrent = buildFullPath(m.FilePath);
-                    foreach (var kvp in _lastRenameHistory)
+                    foreach (ListViewItem lvi in listEpisodes.Items)
                     {
-                        if (kvp.Key.Equals(fullCurrent, StringComparison.OrdinalIgnoreCase))
+                        if (lvi.Tag is MediaItem m)
                         {
-                            transferState(m, kvp.Key, kvp.Value);
-                            m.FilePath = kvp.Value;
-                            m.CacheParsed();
-                            break;
+                            string fullCurrent = buildFullPath(m.FilePath);
+                            if (currentPath.Equals(fullCurrent, StringComparison.OrdinalIgnoreCase))
+                            {
+                                transferState(m, currentPath, originalPath);
+                                m.FilePath = originalPath;
+                                m.CacheParsed();
+                            }
                         }
                     }
+
+                    _lastRenameHistory.Remove(currentPath);
                 }
             }
-
-            _lastRenameHistory.Clear();
 
             await saveAndMergeState();
             refreshAll();
             refreshNodeSelection();
 
-            DarkMessageBox.Show(parentForm, $"Successfully reverted {revertedCount} file(s) to their original names.", "Revert Complete", MessageBoxButtons.OK, darkMode);
+            string resultMessage = revertedCount == 0
+                ? $"No renamed files were found. Undo history for {_lastRenameHistory.Count} file(s) was kept."
+                : $"Successfully reverted {revertedCount} file(s) to their original names.";
+            if (revertedCount > 0 && _lastRenameHistory.Count > 0)
+            {
+                resultMessage += $"\n\nUndo history for {_lastRenameHistory.Count} file(s) was kept because the renamed files could not be found.";
+            }
+
+            DarkMessageBox.Show(parentForm, resultMessage, "Revert Complete", MessageBoxButtons.OK, darkMode);
         }
         catch (Exception ex)
         {

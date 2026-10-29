@@ -21,7 +21,7 @@ namespace Media_Status
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex SeasonExtractor = new(
-            @"(?:S(\d{1,2})E\d{1,2}|(\d{1,2})x\d{1,2}|Season\s*(\d{1,2}))",
+            @"(?:S(\d{1,2})E\d{1,2}|(\d{1,2})x\d{1,2}|Season\s*(\d{1,2})|Episode\s*\d{1,2})",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex ReleaseTagsPattern = new(

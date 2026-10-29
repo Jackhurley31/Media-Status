@@ -126,10 +126,13 @@ namespace Media_Status
 
                         if (File.Exists(path))
                         {
-                            File.Delete(path);
+                            ReplaceFileSafely(tempPath, path);
+                        }
+                        else
+                        {
+                            File.Move(tempPath, path);
                         }
 
-                        File.Move(tempPath, path);
                         break;
                     }
                     catch (IOException)
@@ -151,6 +154,78 @@ namespace Media_Status
                     }
                 }
             }
+        }
+
+        private static void ReplaceFileSafely(string tempPath, string path)
+        {
+            string backupPath = path + "." + Guid.NewGuid().ToString("N") + ".bak";
+
+            try
+            {
+                File.Replace(tempPath, path, backupPath);
+            }
+            catch (NotSupportedException)
+            {
+                ReplaceUsingBackup(tempPath, path);
+            }
+            catch (IOException)
+            {
+                ReplaceUsingBackup(tempPath, path);
+            }
+
+            try
+            {
+                if (File.Exists(backupPath))
+                {
+                    File.Delete(backupPath);
+                }
+            }
+            catch (IOException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to remove replaced cache backup {backupPath}: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to remove replaced cache backup {backupPath}: {ex.Message}");
+            }
+        }
+
+        private static void ReplaceUsingBackup(string tempPath, string path)
+        {
+            if (!File.Exists(path))
+            {
+                File.Move(tempPath, path);
+                return;
+            }
+
+            string backupPath = path + "." + Guid.NewGuid().ToString("N") + ".bak";
+            File.Move(path, backupPath);
+
+            try
+            {
+                File.Move(tempPath, path);
+            }
+            catch (Exception replaceError)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        throw new IOException($"The replacement target was recreated; the original cache remains at {backupPath}.");
+                    }
+
+                    File.Move(backupPath, path);
+                }
+                catch (Exception restoreError)
+                {
+                    throw new IOException(
+                        $"Failed to replace the cache. The original cache is preserved at {backupPath}.",
+                        new AggregateException(replaceError, restoreError));
+                }
+
+                throw;
+            }
+
         }
 
         public static List<MediaItem> Load(string path)
