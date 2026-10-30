@@ -89,6 +89,10 @@ namespace MediaControlApp.Forms
             InitializeComponent();
 
 
+            // 2. Run the slow network scan asynchronously in the background after startup
+            _ = InitializeBackgroundScanAsync();
+
+
             // Runs every 3 minutes after an initial 3-minute delay
             _autoSaveTimer = new System.Threading.Timer(AutoSaveCallback, null, TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(3));
 
@@ -724,7 +728,7 @@ namespace MediaControlApp.Forms
                     int filmsIndex = treeShows.Nodes.Count;
                     treeShows.Nodes.Insert(filmsIndex, filmsNode);
 
-                    // Group films by Release Year (extracted from title/filename, fallback to "Other")
+                    // Group films by Release Year
                     var filmsByYear = filmItems
                         .GroupBy(f =>
                         {
@@ -741,12 +745,14 @@ namespace MediaControlApp.Forms
                         })
                         .OrderByDescending(g => g.Key);
 
+                    // Track watched films and year groups for the Watched section
+                    TreeNode watchedFilmsNode = null;
+
                     foreach (var yearGroup in filmsByYear)
                     {
                         string yearLabel = yearGroup.Key;
                         TreeNode yearNode = filmsNode.Nodes.Add(yearLabel);
 
-                        // Group films by title, but clean out generic folder names like "Films" or "Film"
                         var filmGroups = yearGroup
                             .GroupBy(f =>
                             {
@@ -761,13 +767,14 @@ namespace MediaControlApp.Forms
                             })
                             .OrderBy(g => g.Key);
 
+                        TreeNode watchedYearNode = null;
+
                         foreach (var filmGroup in filmGroups)
                         {
                             var groupList = filmGroup.ToList();
                             bool isFilmWatched = groupList.All(f => f.IsWatched(AppConfig.CurrentUser));
                             string filmTitle = filmGroup.Key;
 
-                            // Skip if title is still "Films"
                             if (filmTitle.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
                                 filmTitle.Equals("Film", StringComparison.OrdinalIgnoreCase))
                             {
@@ -777,9 +784,28 @@ namespace MediaControlApp.Forms
                             bool isFav = groupList.Any(f => f.FavouriteByUser.GetValueOrDefault(AppConfig.CurrentUser));
                             string nodeText = isFav ? "★ " + filmTitle : filmTitle;
 
-                            if (isFilmWatched && topWatchedNode != null)
+                            if (isFilmWatched)
                             {
-                                var watchedFilmNode = topWatchedNode.Nodes.Add(nodeText);
+                                // Ensure topWatchedNode and Watched -> Films exist ONLY when we actually have a watched film
+                                if (topWatchedNode == null)
+                                {
+                                    topWatchedNode = new TreeNode("Watched");
+                                    int insertIndex = topContinueNode != null ? 1 : 0;
+                                    treeShows.Nodes.Insert(insertIndex, topWatchedNode);
+                                }
+
+                                if (watchedFilmsNode == null)
+                                {
+                                    watchedFilmsNode = new TreeNode("Films");
+                                    topWatchedNode.Nodes.Add(watchedFilmsNode);
+                                }
+
+                                if (watchedYearNode == null)
+                                {
+                                    watchedYearNode = watchedFilmsNode.Nodes.Add(yearLabel);
+                                }
+
+                                var watchedFilmNode = watchedYearNode.Nodes.Add(nodeText);
                                 watchedFilmNode.Tag = groupList;
                                 if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
                                     nodeToSelect = watchedFilmNode;
@@ -793,16 +819,26 @@ namespace MediaControlApp.Forms
                             }
                         }
 
-                        // Expand year node if it was previously expanded or filtering is active
+                        // Expand year node if previously expanded or filtering
                         if (expandedShows.Contains(yearLabel) || !string.IsNullOrWhiteSpace(cleanFilter))
                         {
                             yearNode.Expand();
+                        }
+
+                        if (watchedYearNode != null && (expandedShows.Contains(yearLabel) || !string.IsNullOrWhiteSpace(cleanFilter)))
+                        {
+                            watchedYearNode.Expand();
                         }
                     }
 
                     if (expandedShows.Contains("Films") || !string.IsNullOrWhiteSpace(cleanFilter))
                     {
                         filmsNode.Expand();
+                    }
+
+                    if (watchedFilmsNode != null && (expandedShows.Contains("Watched") || !string.IsNullOrWhiteSpace(cleanFilter)))
+                    {
+                        watchedFilmsNode.Expand();
                     }
                 }
 
@@ -1643,20 +1679,22 @@ namespace MediaControlApp.Forms
                                     localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                                     localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
-                                    // Capture and protect the CURRENT user's live in-memory state 
-                                    // so a disk read can NEVER wipe out what was just watched/marked!
+                                    // Capture current live in-memory state
                                     bool hasInMemWatched = localItem.WatchedByUser.TryGetValue(currentUser, out var memWatched) && memWatched;
                                     bool hasInMemFav = localItem.FavouriteByUser.TryGetValue(currentUser, out var memFav) && memFav;
                                     double inMemPos = localItem.SavedPositionByUser.TryGetValue(currentUser, out var memPos) ? memPos : 0;
 
-                                    // Merge other users' data from disk
+                                    // Merge other users' data from disk safely
                                     if (diskItem.WatchedByUser != null)
                                     {
                                         foreach (var kvp in diskItem.WatchedByUser)
                                         {
                                             if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
                                             {
-                                                localItem.WatchedByUser[kvp.Key] = kvp.Value;
+                                                bool diskOtherWatched = kvp.Value;
+                                                bool localOtherWatched = localItem.WatchedByUser.TryGetValue(kvp.Key, out var lOther) && lOther;
+                                                // Once watched, it stays watched (additive protection)
+                                                localItem.WatchedByUser[kvp.Key] = localOtherWatched || diskOtherWatched;
                                             }
                                         }
                                     }
@@ -1667,7 +1705,7 @@ namespace MediaControlApp.Forms
                                         {
                                             if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
                                             {
-                                                localItem.FavouriteByUser[kvp.Key] = kvp.Value;
+                                                localItem.FavouriteByUser[kvp.Key] = localItem.FavouriteByUser.TryGetValue(kvp.Key, out var lFav) && lFav || kvp.Value;
                                             }
                                         }
                                     }
@@ -1678,17 +1716,24 @@ namespace MediaControlApp.Forms
                                         {
                                             if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
                                             {
-                                                localItem.SavedPositionByUser[kvp.Key] = kvp.Value;
+                                                localItem.SavedPositionByUser[kvp.Key] = Math.Max(
+                                                    localItem.SavedPositionByUser.TryGetValue(kvp.Key, out var lPos) ? lPos : 0,
+                                                    kvp.Value
+                                                );
                                             }
                                         }
                                     }
 
-                                    // RESTORE current user's live in-memory state explicitly
-                                    localItem.WatchedByUser[currentUser] = hasInMemWatched || (diskItem.WatchedByUser?.TryGetValue(currentUser, out var dWatch) == true && dWatch);
-                                    localItem.FavouriteByUser[currentUser] = hasInMemFav || (diskItem.FavouriteByUser?.TryGetValue(currentUser, out var dFav) == true && dFav);
+                                    // RESTORE CURRENT USER: Strictly additive for watched state (if it was ever true, keep it true!)
+                                    bool diskUserWatched = diskItem.WatchedByUser?.TryGetValue(currentUser, out var dWatch) == true && dWatch;
+                                    localItem.WatchedByUser[currentUser] = hasInMemWatched || diskUserWatched;
 
-                                    // If memory position is 0 (finished) or has a value, honor memory first, else fallback to disk
-                                    localItem.SavedPositionByUser[currentUser] = inMemPos > 0 ? inMemPos : (diskItem.SavedPositionByUser?.TryGetValue(currentUser, out var dPos) == true ? dPos : 0);
+                                    // Protect favorites and positions
+                                    bool diskUserFav = diskItem.FavouriteByUser?.TryGetValue(currentUser, out var dFav) == true && dFav;
+                                    localItem.FavouriteByUser[currentUser] = hasInMemFav || diskUserFav;
+
+                                    double diskUserPos = diskItem.SavedPositionByUser?.TryGetValue(currentUser, out var dPos) == true ? dPos : 0;
+                                    localItem.SavedPositionByUser[currentUser] = inMemPos > 0 ? inMemPos : diskUserPos;
                                 }
                             }
                         }
@@ -3623,11 +3668,6 @@ namespace MediaControlApp.Forms
                 System.Diagnostics.Debug.WriteLine($"Error during startup check: {ex.Message}");
             }
 
-            // Automatically trigger a full refresh scan on startup after the form renders
-            this.BeginInvoke((MethodInvoker)(() =>
-            {
-                btnRefresh_Click(sender, EventArgs.Empty);
-            }));
         }
 
 
@@ -4482,6 +4522,26 @@ namespace MediaControlApp.Forms
 
         private async void BtnAutoRename_Click(object sender, EventArgs e)
         {
+            // 1. Capture the file paths of all items in the currently selected node before renaming
+            var targetFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (treeShows.SelectedNode != null)
+            {
+                var selectedItems = GetItemsFromNode(treeShows.SelectedNode);
+                foreach (var item in selectedItems)
+                {
+                    if (!string.IsNullOrEmpty(item.FilePath))
+                    {
+                        targetFilePaths.Add(item.FilePath);
+                    }
+                }
+
+                // Fallback if the node holds a single MediaItem directly
+                if (targetFilePaths.Count == 0 && treeShows.SelectedNode.Tag is MediaItem singleItem)
+                {
+                    targetFilePaths.Add(singleItem.FilePath);
+                }
+            }
+
             await EpisodeRenamer.ExecuteAutoRenameAsync(
                 this,
                 listEpisodes,
@@ -4492,10 +4552,50 @@ namespace MediaControlApp.Forms
                 (item, oldPath, newPath) => TransferMediaItemState(item, oldPath, newPath),
                 async () => await SaveAndMergeState(),
                 () => RefreshAll(),
-                () => { if (treeShows.SelectedNode != null) TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(treeShows.SelectedNode)); }
+                () => { } // Handled via BeginInvoke below for precise timing
             );
+
+            // 2. Once refresh completes, find the new node containing these items (using their updated file paths)
+            if (targetFilePaths.Count > 0)
+            {
+                this.BeginInvoke((MethodInvoker)delegate
+                {
+                    TreeNode matchedNode = FindNodeByMediaItems(treeShows.Nodes, targetFilePaths);
+                    if (matchedNode != null)
+                    {
+                        treeShows.SelectedNode = matchedNode;
+                        matchedNode.EnsureVisible();
+                        TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(matchedNode));
+                    }
+                });
+            }
         }
 
+        // Helper method to locate tree nodes by matching their internal MediaItem file paths
+        private TreeNode FindNodeByMediaItems(TreeNodeCollection nodes, HashSet<string> targetFilePaths)
+        {
+            foreach (TreeNode node in nodes)
+            {
+                if (node.Tag is List<MediaItem> mediaList)
+                {
+                    if (mediaList.Any(m => targetFilePaths.Contains(m.FilePath)))
+                    {
+                        return node;
+                    }
+                }
+                else if (node.Tag is MediaItem singleItem)
+                {
+                    if (targetFilePaths.Contains(singleItem.FilePath))
+                    {
+                        return node;
+                    }
+                }
+
+                TreeNode childMatch = FindNodeByMediaItems(node.Nodes, targetFilePaths);
+                if (childMatch != null) return childMatch;
+            }
+            return null;
+        }
 
 
         private void btnAutoRenameOptions_Click(object sender, EventArgs e)

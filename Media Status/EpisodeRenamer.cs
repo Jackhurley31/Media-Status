@@ -88,7 +88,6 @@ public static class EpisodeRenamer
 
             itemsToRename = getItemsFromNode(selectedNode);
 
-            // If it's a Year folder under Films (e.g. "2023"), get all items inside its sub-nodes
             if (isFilmSelection && itemsToRename.Count == 0 && selectedNode.Nodes.Count > 0)
             {
                 foreach (TreeNode subNode in selectedNode.Nodes)
@@ -153,15 +152,15 @@ public static class EpisodeRenamer
 
         try
         {
-            string commonJunkRegex = @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|DVDRip|BDRip|BRRip|BluRay|HD|x264|x265|HEVC|AVC|Xvid|DivX|10bit|8bit|HDR|HDR10|Atmos|TrueHD|DDP?|DD\+|AC3|AAC|MP3|DTS|CH|\d+CH|PROPER|REPACK|INTERNAL|EXTENDED|UNRATED|REMASTERED|PSA|FENIX|EZTV|AFG|DSNP|NF|AMZN|HULU|ATVP|MAX|PCOK|CRITERION)\b";
+            string commonJunkRegex = @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|DVDRip|BDRip|BRRip|BluRay|HD|x264|x265|HEVC|AVC|Xvid|DivX|10bit|8bit|HDR|HDR10|Atmos|TrueHD|DDP?|DD\+|AC3|AAC|MP3|DTS|CH|\d+CH|PROPER|REPACK|INTERNAL|EXTENDED|UNRATED|REMASTERED|PSA|FENIX|EZTV|AFG|DSNP|NF|AMZN|HULU|ATVP|MAX|PCOK|CRITERION|TIFY)\b";
 
             // =========================================================================
-            // FILMS RENAME MODE (Triggered if selected under Films)
+            // FILMS RENAME MODE
             // =========================================================================
             if (isFilmSelection)
             {
                 int filmRenamedCount = 0;
-                bool filmReplacedHistory = false; // Fixed variable name to avoid duplicate scope conflict
+                bool filmReplacedHistory = false;
 
                 foreach (var item in itemsToRename)
                 {
@@ -172,7 +171,6 @@ public static class EpisodeRenamer
 
                         string fileNameOnly = Path.GetFileNameWithoutExtension(oldFullPath);
 
-                        // Strip out all nonsense, junk tags, brackets, and periods
                         string cleaned = fileNameOnly.Replace(".", " ").Replace("_", " ");
                         cleaned = Regex.Replace(cleaned, @"\[.*?\]", string.Empty);
                         cleaned = Regex.Replace(cleaned, @"\(.*?\)", string.Empty);
@@ -180,10 +178,7 @@ public static class EpisodeRenamer
                         cleaned = Regex.Replace(cleaned, @"[\.\-_]+", " ");
                         cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
 
-                        if (string.IsNullOrWhiteSpace(cleaned))
-                        {
-                            cleaned = fileNameOnly;
-                        }
+                        if (string.IsNullOrWhiteSpace(cleaned)) cleaned = fileNameOnly;
 
                         string directory = Path.GetDirectoryName(oldFullPath);
                         string ext = Path.GetExtension(oldFullPath);
@@ -234,18 +229,31 @@ public static class EpisodeRenamer
                     refreshAll();
                     refreshNodeSelection();
 
-                    DarkMessageBox.Show(parentForm, $"Successfully cleaned and renamed {filmRenamedCount} film(s)!", "Film Rename Complete", MessageBoxButtons.OK, darkMode);
+                    // Now films will also prompt you to Keep or Revert!
+                    var keepOrRevert = DarkMessageBox.Show(parentForm,
+                        $"Successfully renamed {filmRenamedCount} film(s)!\n\nDo you want to **Keep** these changes, or **Revert** them back?",
+                        "Confirm Renaming Results", MessageBoxButtons.YesNo, darkMode);
+
+                    if (keepOrRevert == DialogResult.No)
+                    {
+                        await RevertLastRenameAsync(parentForm, listEpisodes, buildFullPath, transferState, saveAndMergeState, refreshAll, refreshNodeSelection, darkMode);
+                    }
+                    else
+                    {
+                        _lastRenameHistory.Clear();
+                        DarkMessageBox.Show(parentForm, "Changes kept successfully!", "Rename Complete", MessageBoxButtons.OK, darkMode);
+                    }
                 }
                 else
                 {
                     DarkMessageBox.Show(parentForm, "No films needed renaming or files were already formatted correctly.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
                 }
 
-                return; // Exit out so TV Show logic doesn't execute
+                return;
             }
 
             // =========================================================================
-            // TV SHOWS RENAME MODE (Existing Logic)
+            // TV SHOWS RENAME MODE
             // =========================================================================
             string rawPattern = Media_Status.Properties.Settings.Default.RenameFormatPattern;
             string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
@@ -305,10 +313,7 @@ public static class EpisodeRenamer
                     }
                 }
             }
-            catch
-            {
-                // API fallback
-            }
+            catch { }
 
             int renamedCount = 0;
             bool replacedUndoHistory = false;
