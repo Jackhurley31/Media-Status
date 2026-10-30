@@ -89,8 +89,8 @@ namespace MediaControlApp.Forms
             btnSupport = new Button();
             gbActions = new GroupBox();
             flowActionsInner = new FlowLayoutPanel();
-            lblCurrentUser = new Label();
             gb_action_setting2 = new GroupBox();
+            lblCurrentUser = new Label();
             BtnSwitchUser = new Button();
             btnShutdownOptions = new Button();
             gb_action_setting1 = new GroupBox();
@@ -130,7 +130,7 @@ namespace MediaControlApp.Forms
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
-            splitMain.Size = new Size(1231, 489);
+            splitMain.Size = new Size(1231, 565);
             splitMain.SplitterDistance = 353;
             splitMain.TabIndex = 0;
             // 
@@ -149,7 +149,7 @@ namespace MediaControlApp.Forms
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
-            splitContainer1.Size = new Size(353, 489);
+            splitContainer1.Size = new Size(353, 565);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
@@ -172,7 +172,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 278);
+            treeShows.Size = new Size(353, 354);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -185,7 +185,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 489);
+            listEpisodes.Size = new Size(874, 565);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -234,7 +234,7 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 489);
+            layoutBottomPanel.Location = new Point(0, 565);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
@@ -540,6 +540,18 @@ namespace MediaControlApp.Forms
             flowActionsInner.Size = new Size(604, 82);
             flowActionsInner.TabIndex = 0;
             // 
+            // gb_action_setting2
+            // 
+            gb_action_setting2.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            gb_action_setting2.Controls.Add(lblCurrentUser);
+            gb_action_setting2.Controls.Add(BtnSwitchUser);
+            gb_action_setting2.Controls.Add(btnShutdownOptions);
+            gb_action_setting2.Location = new Point(3, 3);
+            gb_action_setting2.Name = "gb_action_setting2";
+            gb_action_setting2.Size = new Size(147, 76);
+            gb_action_setting2.TabIndex = 7;
+            gb_action_setting2.TabStop = false;
+            // 
             // lblCurrentUser
             // 
             lblCurrentUser.AutoSize = true;
@@ -548,17 +560,6 @@ namespace MediaControlApp.Forms
             lblCurrentUser.Size = new Size(77, 15);
             lblCurrentUser.TabIndex = 5;
             lblCurrentUser.Text = "CurrentUser";
-            // 
-            // gb_action_setting2
-            // 
-            gb_action_setting2.Controls.Add(lblCurrentUser);
-            gb_action_setting2.Controls.Add(BtnSwitchUser);
-            gb_action_setting2.Controls.Add(btnShutdownOptions);
-            gb_action_setting2.Location = new Point(3, 3);
-            gb_action_setting2.Name = "gb_action_setting2";
-            gb_action_setting2.Size = new Size(200, 76);
-            gb_action_setting2.TabIndex = 7;
-            gb_action_setting2.TabStop = false;
             // 
             // BtnSwitchUser
             // 
@@ -584,13 +585,13 @@ namespace MediaControlApp.Forms
             // 
             // gb_action_setting1
             // 
+            gb_action_setting1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             gb_action_setting1.Controls.Add(chkFullscreen);
             gb_action_setting1.Controls.Add(chkSubtitles);
             gb_action_setting1.Controls.Add(cmbScreens);
-            flowActionsInner.SetFlowBreak(gb_action_setting1, true);
-            gb_action_setting1.Location = new Point(209, 3);
+            gb_action_setting1.Location = new Point(156, 3);
             gb_action_setting1.Name = "gb_action_setting1";
-            gb_action_setting1.Size = new Size(389, 76);
+            gb_action_setting1.Size = new Size(284, 76);
             gb_action_setting1.TabIndex = 6;
             gb_action_setting1.TabStop = false;
             // 
@@ -633,11 +634,11 @@ namespace MediaControlApp.Forms
             // 
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(1231, 660);
+            ClientSize = new Size(1231, 736);
             Controls.Add(splitMain);
             Controls.Add(layoutBottomPanel);
             Icon = (Icon)resources.GetObject("$this.Icon");
-            MinimumSize = new Size(980, 500);
+            MinimumSize = new Size(1120, 775);
             Name = "MainForm";
             Text = "Media Control";
             WindowState = FormWindowState.Maximized;
