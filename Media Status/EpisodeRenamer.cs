@@ -161,7 +161,7 @@ public static class EpisodeRenamer
             if (isFilmSelection)
             {
                 int filmRenamedCount = 0;
-                bool replacedUndoHistory = false;
+                bool filmReplacedHistory = false; // Fixed variable name to avoid duplicate scope conflict
 
                 foreach (var item in itemsToRename)
                 {
@@ -204,10 +204,10 @@ public static class EpisodeRenamer
                             File.Move(oldFullPath, newFullPath);
                         }
 
-                        if (!replacedUndoHistory)
+                        if (!filmReplacedHistory)
                         {
                             _lastRenameHistory.Clear();
-                            replacedUndoHistory = true;
+                            filmReplacedHistory = true;
                         }
 
                         _lastRenameHistory[newFullPath] = oldFullPath;
