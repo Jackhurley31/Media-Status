@@ -69,8 +69,8 @@ namespace MediaControlApp.Forms
             label1 = new Label();
             txtSearch = new TextBox();
             OpenFileLocation = new Button();
-            BtnCheckIMDb = new Button();
             BtnCheckTVMAZE = new Button();
+            BtnCheckIMDb = new Button();
             flowLayoutPanel3 = new FlowLayoutPanel();
             btnDelete = new Button();
             btnArchive = new Button();
@@ -90,11 +90,13 @@ namespace MediaControlApp.Forms
             gbActions = new GroupBox();
             flowActionsInner = new FlowLayoutPanel();
             lblCurrentUser = new Label();
+            gb_action_setting2 = new GroupBox();
             BtnSwitchUser = new Button();
             btnShutdownOptions = new Button();
+            gb_action_setting1 = new GroupBox();
+            chkFullscreen = new CheckBox();
             chkSubtitles = new CheckBox();
             cmbScreens = new ComboBox();
-            chkFullscreen = new CheckBox();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -110,6 +112,8 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.SuspendLayout();
             gbActions.SuspendLayout();
             flowActionsInner.SuspendLayout();
+            gb_action_setting2.SuspendLayout();
+            gb_action_setting1.SuspendLayout();
             SuspendLayout();
             // 
             // splitMain
@@ -126,7 +130,7 @@ namespace MediaControlApp.Forms
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
-            splitMain.Size = new Size(1231, 509);
+            splitMain.Size = new Size(1231, 489);
             splitMain.SplitterDistance = 353;
             splitMain.TabIndex = 0;
             // 
@@ -145,7 +149,7 @@ namespace MediaControlApp.Forms
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
-            splitContainer1.Size = new Size(353, 509);
+            splitContainer1.Size = new Size(353, 489);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
@@ -168,7 +172,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 298);
+            treeShows.Size = new Size(353, 278);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -181,7 +185,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 509);
+            listEpisodes.Size = new Size(874, 489);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -230,12 +234,12 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 509);
+            layoutBottomPanel.Location = new Point(0, 489);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(1231, 151);
+            layoutBottomPanel.Size = new Size(1231, 171);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -296,18 +300,6 @@ namespace MediaControlApp.Forms
             OpenFileLocation.Visible = false;
             OpenFileLocation.Click += OpenFileLocation_Click;
             // 
-            // BtnCheckIMDb
-            // 
-            BtnCheckIMDb.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnCheckIMDb.BackgroundImageLayout = ImageLayout.Center;
-            BtnCheckIMDb.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            BtnCheckIMDb.Image = Media_Status.Properties.Resources.IMDb_Logo;
-            BtnCheckIMDb.Location = new Point(3, 34);
-            BtnCheckIMDb.Name = "BtnCheckIMDb";
-            BtnCheckIMDb.Size = new Size(100, 20);
-            BtnCheckIMDb.TabIndex = 4;
-            BtnCheckIMDb.Click += BtnCheckIMDb_Click;
-            // 
             // BtnCheckTVMAZE
             // 
             BtnCheckTVMAZE.AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -319,6 +311,18 @@ namespace MediaControlApp.Forms
             BtnCheckTVMAZE.Size = new Size(116, 22);
             BtnCheckTVMAZE.TabIndex = 5;
             BtnCheckTVMAZE.Click += BtnCheckTVMAZE_Click;
+            // 
+            // BtnCheckIMDb
+            // 
+            BtnCheckIMDb.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            BtnCheckIMDb.BackgroundImageLayout = ImageLayout.Center;
+            BtnCheckIMDb.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            BtnCheckIMDb.Image = Media_Status.Properties.Resources.IMDb_Logo;
+            BtnCheckIMDb.Location = new Point(3, 34);
+            BtnCheckIMDb.Name = "BtnCheckIMDb";
+            BtnCheckIMDb.Size = new Size(100, 20);
+            BtnCheckIMDb.TabIndex = 4;
+            BtnCheckIMDb.Click += BtnCheckIMDb_Click;
             // 
             // flowLayoutPanel3
             // 
@@ -420,7 +424,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(3, 66);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(609, 82);
+            flowLayoutPanel1.Size = new Size(609, 102);
             flowLayoutPanel1.TabIndex = 2;
             // 
             // btnoptions
@@ -519,7 +523,7 @@ namespace MediaControlApp.Forms
             gbActions.Dock = DockStyle.Fill;
             gbActions.Location = new Point(618, 66);
             gbActions.Name = "gbActions";
-            gbActions.Size = new Size(610, 82);
+            gbActions.Size = new Size(610, 102);
             gbActions.TabIndex = 3;
             gbActions.TabStop = false;
             gbActions.Text = "Actions";
@@ -528,33 +532,39 @@ namespace MediaControlApp.Forms
             // 
             flowActionsInner.AutoSize = true;
             flowActionsInner.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            flowActionsInner.Controls.Add(lblCurrentUser);
-            flowActionsInner.Controls.Add(BtnSwitchUser);
-            flowActionsInner.Controls.Add(btnShutdownOptions);
-            flowActionsInner.Controls.Add(chkSubtitles);
-            flowActionsInner.Controls.Add(cmbScreens);
-            flowActionsInner.Controls.Add(chkFullscreen);
+            flowActionsInner.Controls.Add(gb_action_setting2);
+            flowActionsInner.Controls.Add(gb_action_setting1);
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
-            flowActionsInner.Size = new Size(604, 62);
+            flowActionsInner.Size = new Size(604, 82);
             flowActionsInner.TabIndex = 0;
             // 
             // lblCurrentUser
             // 
             lblCurrentUser.AutoSize = true;
-            flowActionsInner.SetFlowBreak(lblCurrentUser, true);
-            lblCurrentUser.Location = new Point(3, 0);
+            lblCurrentUser.Location = new Point(6, 1);
             lblCurrentUser.Name = "lblCurrentUser";
             lblCurrentUser.Size = new Size(77, 15);
             lblCurrentUser.TabIndex = 5;
             lblCurrentUser.Text = "CurrentUser";
             // 
+            // gb_action_setting2
+            // 
+            gb_action_setting2.Controls.Add(lblCurrentUser);
+            gb_action_setting2.Controls.Add(BtnSwitchUser);
+            gb_action_setting2.Controls.Add(btnShutdownOptions);
+            gb_action_setting2.Location = new Point(3, 3);
+            gb_action_setting2.Name = "gb_action_setting2";
+            gb_action_setting2.Size = new Size(200, 76);
+            gb_action_setting2.TabIndex = 7;
+            gb_action_setting2.TabStop = false;
+            // 
             // BtnSwitchUser
             // 
             BtnSwitchUser.AutoSize = true;
             BtnSwitchUser.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnSwitchUser.Location = new Point(3, 34);
+            BtnSwitchUser.Location = new Point(6, 19);
             BtnSwitchUser.Name = "BtnSwitchUser";
             BtnSwitchUser.Size = new Size(86, 25);
             BtnSwitchUser.TabIndex = 4;
@@ -565,17 +575,43 @@ namespace MediaControlApp.Forms
             // 
             btnShutdownOptions.AutoSize = true;
             btnShutdownOptions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnShutdownOptions.Location = new Point(95, 34);
+            btnShutdownOptions.Location = new Point(6, 50);
             btnShutdownOptions.Name = "btnShutdownOptions";
             btnShutdownOptions.Size = new Size(90, 25);
             btnShutdownOptions.TabIndex = 0;
             btnShutdownOptions.Text = "Power Timer";
             btnShutdownOptions.Click += btnShutdownOptions_Click;
             // 
+            // gb_action_setting1
+            // 
+            gb_action_setting1.Controls.Add(chkFullscreen);
+            gb_action_setting1.Controls.Add(chkSubtitles);
+            gb_action_setting1.Controls.Add(cmbScreens);
+            flowActionsInner.SetFlowBreak(gb_action_setting1, true);
+            gb_action_setting1.Location = new Point(209, 3);
+            gb_action_setting1.Name = "gb_action_setting1";
+            gb_action_setting1.Size = new Size(389, 76);
+            gb_action_setting1.TabIndex = 6;
+            gb_action_setting1.TabStop = false;
+            // 
+            // chkFullscreen
+            // 
+            chkFullscreen.AutoSize = true;
+            chkFullscreen.Checked = true;
+            chkFullscreen.CheckState = CheckState.Checked;
+            chkFullscreen.Location = new Point(11, 23);
+            chkFullscreen.Margin = new Padding(8, 6, 3, 3);
+            chkFullscreen.Name = "chkFullscreen";
+            chkFullscreen.Size = new Size(85, 19);
+            chkFullscreen.TabIndex = 3;
+            chkFullscreen.Text = "Fullscreen";
+            chkFullscreen.UseVisualStyleBackColor = true;
+            chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
+            // 
             // chkSubtitles
             // 
             chkSubtitles.AutoSize = true;
-            chkSubtitles.Location = new Point(196, 37);
+            chkSubtitles.Location = new Point(11, 41);
             chkSubtitles.Margin = new Padding(8, 6, 3, 3);
             chkSubtitles.Name = "chkSubtitles";
             chkSubtitles.Size = new Size(76, 19);
@@ -587,25 +623,11 @@ namespace MediaControlApp.Forms
             // cmbScreens
             // 
             cmbScreens.FormattingEnabled = true;
-            cmbScreens.Location = new Point(278, 34);
+            cmbScreens.Location = new Point(120, 23);
             cmbScreens.Name = "cmbScreens";
             cmbScreens.Size = new Size(151, 23);
             cmbScreens.TabIndex = 2;
             cmbScreens.SelectedIndexChanged += cmbScreens_SelectedIndexChanged;
-            // 
-            // chkFullscreen
-            // 
-            chkFullscreen.AutoSize = true;
-            chkFullscreen.Checked = true;
-            chkFullscreen.CheckState = CheckState.Checked;
-            chkFullscreen.Location = new Point(440, 37);
-            chkFullscreen.Margin = new Padding(8, 6, 3, 3);
-            chkFullscreen.Name = "chkFullscreen";
-            chkFullscreen.Size = new Size(85, 19);
-            chkFullscreen.TabIndex = 3;
-            chkFullscreen.Text = "Fullscreen";
-            chkFullscreen.UseVisualStyleBackColor = true;
-            chkFullscreen.CheckedChanged += chkFullscreen_CheckedChanged;
             // 
             // MainForm
             // 
@@ -641,7 +663,10 @@ namespace MediaControlApp.Forms
             gbActions.ResumeLayout(false);
             gbActions.PerformLayout();
             flowActionsInner.ResumeLayout(false);
-            flowActionsInner.PerformLayout();
+            gb_action_setting2.ResumeLayout(false);
+            gb_action_setting2.PerformLayout();
+            gb_action_setting1.ResumeLayout(false);
+            gb_action_setting1.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -657,5 +682,7 @@ namespace MediaControlApp.Forms
         private Label lblCurrentUser;
         private Button btnSupport;
         private Button BtnCheckTVMAZE;
+        private GroupBox gb_action_setting1;
+        private GroupBox gb_action_setting2;
     }
 }
