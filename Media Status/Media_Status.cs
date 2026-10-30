@@ -714,7 +714,7 @@ namespace MediaControlApp.Forms
                 }
 
                 // =========================================================================
-                // SECTION 4: Process Films (Pinned below Watched / Direct nodes without Seasons)
+                // SECTION 4: Process Films (Grouped by Release Year)
                 // =========================================================================
                 if (filmItems.Any())
                 {
@@ -724,8 +724,8 @@ namespace MediaControlApp.Forms
                     int filmsIndex = treeShows.Nodes.Count;
                     treeShows.Nodes.Insert(filmsIndex, filmsNode);
 
-                    // Group films by title, but clean out generic folder names like "Films" or "Film"
-                    var filmGroups = filmItems
+                    // Group films by Release Year (extracted from title/filename, fallback to "Other")
+                    var filmsByYear = filmItems
                         .GroupBy(f =>
                         {
                             string name = f.CachedSeriesName;
@@ -733,41 +733,70 @@ namespace MediaControlApp.Forms
                                 name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
                                 name.Equals("Film", StringComparison.OrdinalIgnoreCase))
                             {
-                                return Path.GetFileNameWithoutExtension(f.FileName);
+                                name = Path.GetFileNameWithoutExtension(f.FilePath);
                             }
-                            return name;
+
+                            var match = System.Text.RegularExpressions.Regex.Match(name, @"\b(19\d{2}|20\d{2})\b");
+                            return match.Success ? match.Value : "Other";
                         })
-                        .OrderBy(g => g.Key);
+                        .OrderByDescending(g => g.Key);
 
-                    foreach (var filmGroup in filmGroups)
+                    foreach (var yearGroup in filmsByYear)
                     {
-                        var groupList = filmGroup.ToList();
-                        bool isFilmWatched = groupList.All(f => f.IsWatched(AppConfig.CurrentUser));
-                        string filmTitle = filmGroup.Key;
+                        string yearLabel = yearGroup.Key;
+                        TreeNode yearNode = filmsNode.Nodes.Add(yearLabel);
 
-                        // Skip if title is still "Films"
-                        if (filmTitle.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
-                            filmTitle.Equals("Film", StringComparison.OrdinalIgnoreCase))
+                        // Group films by title, but clean out generic folder names like "Films" or "Film"
+                        var filmGroups = yearGroup
+                            .GroupBy(f =>
+                            {
+                                string name = f.CachedSeriesName;
+                                if (string.IsNullOrWhiteSpace(name) ||
+                                    name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                                    name.Equals("Film", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return Path.GetFileNameWithoutExtension(f.FilePath);
+                                }
+                                return name;
+                            })
+                            .OrderBy(g => g.Key);
+
+                        foreach (var filmGroup in filmGroups)
                         {
-                            continue;
+                            var groupList = filmGroup.ToList();
+                            bool isFilmWatched = groupList.All(f => f.IsWatched(AppConfig.CurrentUser));
+                            string filmTitle = filmGroup.Key;
+
+                            // Skip if title is still "Films"
+                            if (filmTitle.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                                filmTitle.Equals("Film", StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            bool isFav = groupList.Any(f => f.FavouriteByUser.GetValueOrDefault(AppConfig.CurrentUser));
+                            string nodeText = isFav ? "★ " + filmTitle : filmTitle;
+
+                            if (isFilmWatched && topWatchedNode != null)
+                            {
+                                var watchedFilmNode = topWatchedNode.Nodes.Add(nodeText);
+                                watchedFilmNode.Tag = groupList;
+                                if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
+                                    nodeToSelect = watchedFilmNode;
+                            }
+                            else
+                            {
+                                var filmNode = yearNode.Nodes.Add(nodeText);
+                                filmNode.Tag = groupList;
+                                if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
+                                    nodeToSelect = filmNode;
+                            }
                         }
 
-                        bool isFav = groupList.Any(f => f.FavouriteByUser.GetValueOrDefault(AppConfig.CurrentUser));
-                        string nodeText = isFav ? "★ " + filmTitle : filmTitle;
-
-                        if (isFilmWatched && topWatchedNode != null)
+                        // Expand year node if it was previously expanded or filtering is active
+                        if (expandedShows.Contains(yearLabel) || !string.IsNullOrWhiteSpace(cleanFilter))
                         {
-                            var watchedFilmNode = topWatchedNode.Nodes.Add(nodeText);
-                            watchedFilmNode.Tag = groupList;
-                            if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
-                                nodeToSelect = watchedFilmNode;
-                        }
-                        else
-                        {
-                            var filmNode = filmsNode.Nodes.Add(nodeText);
-                            filmNode.Tag = groupList;
-                            if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
-                                nodeToSelect = filmNode;
+                            yearNode.Expand();
                         }
                     }
 
@@ -943,10 +972,26 @@ namespace MediaControlApp.Forms
             string rootName = showNode.Text.Trim();
 
             // 2. Ignore the main "Films" category entirely
+            // CHECK IF CLICKED NODE IS UNDER "Films"
             if (rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
             {
-                picPoster.Image = null;
-                return;
+                string nodeText = e.Node.Text.Replace("★ ", "").Trim();
+
+                // If the user clicked the main "Films" header, a Year folder, or the "Other" folder, 
+                // they don't have media items in their Tag. Clear the poster and exit!
+                if (e.Node.Tag == null || nodeText.Equals("Other", StringComparison.OrdinalIgnoreCase))
+                {
+                    picPoster.Image = null;
+                    return;
+                }
+
+                // If it's an actual individual film node (Tag contains the media list), load the poster
+                if (e.Node.Tag is List<MediaItem> filmList && filmList.Count > 0)
+                {
+                    string filmTitle = nodeText;
+                    await LoadAutoFilmPosterAsync(filmTitle);
+                    return;
+                }
             }
 
             // 3. Extract the clean show title
@@ -1382,6 +1427,182 @@ namespace MediaControlApp.Forms
                 picPoster.Image = null;
             }
         }
+
+
+
+
+        private async Task LoadAutoFilmPosterAsync(string mediaPathOrTitle)
+        {
+            if (string.IsNullOrWhiteSpace(mediaPathOrTitle))
+            {
+                picPoster.Image = null;
+                return;
+            }
+
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string resolvedPath = null;
+                try { resolvedPath = BuildFullPath(mediaPathOrTitle); }
+                catch { resolvedPath = mediaPathOrTitle; }
+
+                string targetDir = null;
+                if (!string.IsNullOrEmpty(resolvedPath))
+                {
+                    if (Directory.Exists(resolvedPath)) targetDir = resolvedPath;
+                    else if (File.Exists(resolvedPath)) targetDir = Path.GetDirectoryName(resolvedPath);
+                }
+
+                // 1. Check local poster files first (poster.jpg, folder.jpg, cover.jpg, etc.)
+                string localPosterFile = null;
+                string[] posterNames = { "poster.jpg", "poster.jpeg", "poster.png", "folder.jpg", "folder.jpeg", "folder.png", "cover.jpg", "cover.jpeg", "cover.png" };
+
+                if (!string.IsNullOrEmpty(targetDir) && Directory.Exists(targetDir))
+                {
+                    DirectoryInfo currentDir = new DirectoryInfo(targetDir);
+                    for (int i = 0; i < 4 && currentDir != null; i++)
+                    {
+                        try
+                        {
+                            foreach (var name in posterNames)
+                            {
+                                string candidate = Path.Combine(currentDir.FullName, name);
+                                if (File.Exists(candidate))
+                                {
+                                    localPosterFile = candidate;
+                                    break;
+                                }
+                            }
+                            if (localPosterFile != null) break;
+                            currentDir = currentDir.Parent;
+                        }
+                        catch { break; }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(localPosterFile) && File.Exists(localPosterFile))
+                {
+                    _posterCancellationTokenSource?.Cancel();
+                    try
+                    {
+                        using (var fs = new FileStream(localPosterFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+                        {
+                            using (var img = Image.FromStream(fs))
+                            {
+                                picPoster.Image = new Bitmap(img);
+                            }
+                        }
+                        return;
+                    }
+                    catch { }
+                }
+
+                // 2. Clean Film Title
+                string sourceNameToClean = !string.IsNullOrEmpty(targetDir) ? new DirectoryInfo(targetDir).Name : Path.GetFileNameWithoutExtension(resolvedPath);
+                string cleanTitle = System.Text.RegularExpressions.Regex.Replace(sourceNameToClean, @"\b(19|20)\d{2}\b", "");
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|hrhdtv|web-dl|bluray|x264|x265)", "");
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[\(\[].*?[\)\]]", "");
+                cleanTitle = cleanTitle.Replace(".", " ").Replace("_", " ").Trim();
+
+                if (string.IsNullOrWhiteSpace(cleanTitle)) return;
+
+                string posterCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MediaControlApp", "PosterCache");
+                Directory.CreateDirectory(posterCacheDir);
+
+                string safeFileName = string.Join("_", cleanTitle.Split(Path.GetInvalidFileNameChars()));
+                string localPosterPath = Path.Combine(posterCacheDir, safeFileName + ".jpg");
+
+                if (File.Exists(localPosterPath))
+                {
+                    _posterCancellationTokenSource?.Cancel();
+                    try
+                    {
+                        using (var fs = new FileStream(localPosterPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                        {
+                            using (var img = Image.FromStream(fs))
+                            {
+                                picPoster.Image = new Bitmap(img);
+                            }
+                        }
+                        return;
+                    }
+                    catch { File.Delete(localPosterPath); }
+                }
+
+                _posterCancellationTokenSource?.Cancel();
+                _posterCancellationTokenSource = new CancellationTokenSource();
+                var cancellationToken = _posterCancellationTokenSource.Token;
+
+                // 3. Keyless Open Search Query for Movie Posters
+                using (HttpClient client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                    string imageUrl = null;
+
+                    // Using the open IMDb suggestion mirror (No API key needed)
+                    string searchUrl = $"https://v2.sg.media-imdb.com/suggestion/x/{Uri.EscapeDataString(cleanTitle)}.json";
+                    HttpResponseMessage response = await client.GetAsync(searchUrl, cancellationToken);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+                        using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
+                        {
+                            if (doc.RootElement.TryGetProperty("d", out var dArr) && dArr.GetArrayLength() > 0)
+                            {
+                                var firstMatch = dArr[0];
+                                if (firstMatch.TryGetProperty("i", out var imgObj) && imgObj.TryGetProperty("imageUrl", out var urlProp))
+                                {
+                                    imageUrl = urlProp.GetString();
+                                }
+                            }
+                        }
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!string.IsNullOrEmpty(imageUrl))
+                    {
+                        byte[] imageBytes = await client.GetByteArrayAsync(imageUrl, cancellationToken);
+                        await File.WriteAllBytesAsync(localPosterPath, imageBytes, cancellationToken);
+
+                        if (!cancellationToken.IsCancellationRequested)
+                        {
+                            using (var ms = new MemoryStream(imageBytes))
+                            {
+                                using (var img = Image.FromStream(ms))
+                                {
+                                    picPoster.Image = new Bitmap(img);
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                if (!_posterCancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    picPoster.Image = null;
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Film auto-poster error: {ex.Message}");
+                picPoster.Image = null;
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
