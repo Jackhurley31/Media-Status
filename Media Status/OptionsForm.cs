@@ -376,5 +376,28 @@ namespace MediaControlApp
                 }
             }
         }
+
+        private void btnOpenLocalPath_Click_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string localPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MediaControlApp"
+                );
+
+                if (!Directory.Exists(localPath))
+                {
+                    Directory.CreateDirectory(localPath);
+                }
+
+                // Open the local AppData folder in Windows Explorer
+                System.Diagnostics.Process.Start("explorer.exe", localPath);
+            }
+            catch (Exception ex)
+            {
+                DarkMessageBox.Show(this, $"Failed to open local path: {ex.Message}", "Error", MessageBoxButtons.OK, _darkMode);
+            }
+        }
     }
 }

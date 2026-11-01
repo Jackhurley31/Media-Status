@@ -29,11 +29,12 @@
             label1 = new Label();
             groupBox1 = new GroupBox();
             tableGeneralLayout = new TableLayoutPanel();
-            chkRunOnStartup = new CheckBox();
             label2 = new Label();
             cmbFontSize = new ComboBox();
             label3 = new Label();
             cmbFontFamily = new ComboBox();
+            chkRunOnStartup = new CheckBox();
+            btnOpenLocalPath_Click = new Button();
             groupBox2 = new GroupBox();
             tableVideoLayout = new TableLayoutPanel();
             tableVlcPath = new TableLayoutPanel();
@@ -108,7 +109,7 @@
             // 
             BtnDarkMode.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             BtnDarkMode.AutoSize = true;
-            BtnDarkMode.Location = new Point(3, 3);
+            BtnDarkMode.Location = new Point(3, 42);
             BtnDarkMode.Margin = new Padding(3, 3, 3, 6);
             BtnDarkMode.Name = "BtnDarkMode";
             BtnDarkMode.Size = new Size(212, 30);
@@ -172,12 +173,13 @@
             tableGeneralLayout.AutoSize = true;
             tableGeneralLayout.ColumnCount = 1;
             tableGeneralLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tableGeneralLayout.Controls.Add(BtnDarkMode, 0, 0);
-            tableGeneralLayout.Controls.Add(chkRunOnStartup, 0, 1);
             tableGeneralLayout.Controls.Add(label2, 0, 2);
             tableGeneralLayout.Controls.Add(cmbFontSize, 0, 3);
             tableGeneralLayout.Controls.Add(label3, 0, 4);
             tableGeneralLayout.Controls.Add(cmbFontFamily, 0, 5);
+            tableGeneralLayout.Controls.Add(chkRunOnStartup, 0, 6);
+            tableGeneralLayout.Controls.Add(BtnDarkMode, 0, 1);
+            tableGeneralLayout.Controls.Add(btnOpenLocalPath_Click, 0, 0);
             tableGeneralLayout.Dock = DockStyle.Fill;
             tableGeneralLayout.Location = new Point(8, 24);
             tableGeneralLayout.Name = "tableGeneralLayout";
@@ -192,24 +194,11 @@
             tableGeneralLayout.Size = new Size(218, 448);
             tableGeneralLayout.TabIndex = 0;
             // 
-            // chkRunOnStartup
-            // 
-            chkRunOnStartup.AutoSize = true;
-            chkRunOnStartup.Font = new Font("Segoe UI", 9F);
-            chkRunOnStartup.Location = new Point(3, 45);
-            chkRunOnStartup.Margin = new Padding(3, 6, 3, 10);
-            chkRunOnStartup.Name = "chkRunOnStartup";
-            chkRunOnStartup.Size = new Size(128, 19);
-            chkRunOnStartup.TabIndex = 1;
-            chkRunOnStartup.Text = "Start with Windows";
-            chkRunOnStartup.UseVisualStyleBackColor = true;
-            chkRunOnStartup.CheckedChanged += chkRunOnStartup_CheckedChanged;
-            // 
             // label2
             // 
             label2.AutoSize = true;
             label2.Font = new Font("Segoe UI", 9F);
-            label2.Location = new Point(3, 80);
+            label2.Location = new Point(3, 84);
             label2.Margin = new Padding(3, 6, 3, 2);
             label2.Name = "label2";
             label2.Size = new Size(57, 15);
@@ -222,7 +211,7 @@
             cmbFontSize.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbFontSize.Font = new Font("Segoe UI", 9F);
             cmbFontSize.FormattingEnabled = true;
-            cmbFontSize.Location = new Point(3, 97);
+            cmbFontSize.Location = new Point(3, 101);
             cmbFontSize.Margin = new Padding(3, 0, 3, 10);
             cmbFontSize.Name = "cmbFontSize";
             cmbFontSize.Size = new Size(212, 23);
@@ -233,7 +222,7 @@
             // 
             label3.AutoSize = true;
             label3.Font = new Font("Segoe UI", 9F);
-            label3.Location = new Point(3, 136);
+            label3.Location = new Point(3, 140);
             label3.Margin = new Padding(3, 6, 3, 2);
             label3.Name = "label3";
             label3.Size = new Size(62, 15);
@@ -246,12 +235,38 @@
             cmbFontFamily.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbFontFamily.Font = new Font("Segoe UI", 9F);
             cmbFontFamily.FormattingEnabled = true;
-            cmbFontFamily.Location = new Point(3, 153);
+            cmbFontFamily.Location = new Point(3, 157);
             cmbFontFamily.Margin = new Padding(3, 0, 3, 10);
             cmbFontFamily.Name = "cmbFontFamily";
             cmbFontFamily.Size = new Size(212, 23);
             cmbFontFamily.TabIndex = 5;
             cmbFontFamily.SelectedIndexChanged += cmbFontFamily_SelectedIndexChanged;
+            // 
+            // chkRunOnStartup
+            // 
+            chkRunOnStartup.AutoSize = true;
+            chkRunOnStartup.Font = new Font("Segoe UI", 9F);
+            chkRunOnStartup.Location = new Point(3, 196);
+            chkRunOnStartup.Margin = new Padding(3, 6, 3, 10);
+            chkRunOnStartup.Name = "chkRunOnStartup";
+            chkRunOnStartup.Size = new Size(128, 19);
+            chkRunOnStartup.TabIndex = 1;
+            chkRunOnStartup.Text = "Start with Windows";
+            chkRunOnStartup.UseVisualStyleBackColor = true;
+            chkRunOnStartup.CheckedChanged += chkRunOnStartup_CheckedChanged;
+            // 
+            // btnOpenLocalPath_Click
+            // 
+            btnOpenLocalPath_Click.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            btnOpenLocalPath_Click.AutoSize = true;
+            btnOpenLocalPath_Click.Location = new Point(3, 3);
+            btnOpenLocalPath_Click.Margin = new Padding(3, 3, 3, 6);
+            btnOpenLocalPath_Click.Name = "btnOpenLocalPath_Click";
+            btnOpenLocalPath_Click.Size = new Size(212, 30);
+            btnOpenLocalPath_Click.TabIndex = 6;
+            btnOpenLocalPath_Click.Text = "Open Local Path setting";
+            btnOpenLocalPath_Click.UseVisualStyleBackColor = true;
+            btnOpenLocalPath_Click.Click += btnOpenLocalPath_Click_Click;
             // 
             // groupBox2
             // 
@@ -398,5 +413,6 @@
         private TableLayoutPanel tableVlcPath;
         private FlowLayoutPanel flowAddExtension;
         private TableLayoutPanel tableFormLayout;
+        private Button btnOpenLocalPath_Click;
     }
 }

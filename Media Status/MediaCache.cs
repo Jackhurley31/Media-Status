@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -14,9 +14,6 @@ namespace Media_Status
     {
         private static readonly object FileLock = new();
 
-        [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
-        private static extern int WNetGetConnection(string lpszLocalName, StringBuilder lpszRemoteName, ref int cbRemoteName);
-
         private static readonly JsonSerializerOptions Options = new()
         {
             WriteIndented = true,
@@ -24,43 +21,71 @@ namespace Media_Status
             IncludeFields = true
         };
 
-        /// <summary>
-        /// Gets the local cache file path on C drive, dynamically generated using a hash 
-        /// of the application's base directory so multiple instances remain isolated.
-        /// </summary>
+        // Helper to get the active root directory (respecting media_state_redirect.txt)
+        public static string GetActiveRootDirectory()
+        {
+            string redirectFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "media_state_redirect.txt");
+            if (File.Exists(redirectFile))
+            {
+                try
+                {
+                    string redirectedPath = File.ReadAllText(redirectFile).Trim();
+                    if (!string.IsNullOrWhiteSpace(redirectedPath))
+                    {
+                        // If it points directly to a file path or directory, resolve accordingly
+                        if (Directory.Exists(redirectedPath) || !Path.HasExtension(redirectedPath))
+                        {
+                            return redirectedPath;
+                        }
+                        else
+                        {
+                            string dir = Path.GetDirectoryName(redirectedPath);
+                            if (!string.IsNullOrEmpty(dir)) return dir;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        // 1. Master file path (points to NAS via redirect file if present, otherwise local)
+        public static string MasterPath
+        {
+            get
+            {
+                string redirectFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "media_state_redirect.txt");
+                if (File.Exists(redirectFile))
+                {
+                    try
+                    {
+                        string redirectedPath = File.ReadAllText(redirectFile).Trim();
+                        if (!string.IsNullOrWhiteSpace(redirectedPath))
+                        {
+                            if (Path.HasExtension(redirectedPath) && redirectedPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return redirectedPath;
+                            }
+                            return Path.Combine(redirectedPath, "media_state.json");
+                        }
+                    }
+                    catch { }
+                }
+                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "media_state.json");
+            }
+        }
+
+        // 2. Isolated C: drive AppData cache path unique to the active root folder hash
         public static string LocalCachePath => GetLocalCachePath();
 
         private static string GetLocalCachePath()
         {
-            // Normalize current application directory
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(
+            string baseDir = GetActiveRootDirectory().TrimEnd(
                 Path.DirectorySeparatorChar,
                 Path.AltDirectorySeparatorChar
             );
 
-            // Smarter resolution: If it's a mapped drive letter (e.g., Z:\), resolve it to its UNC equivalent
-            if (baseDir.Length >= 2 && baseDir[1] == ':')
-            {
-                string driveLetter = baseDir.Substring(0, 2);
-                try
-                {
-                    var sb = new StringBuilder(512);
-                    int capacity = sb.Capacity;
-                    if (WNetGetConnection(driveLetter, sb, ref capacity) == 0)
-                    {
-                        // Combine the UNC share path with any subfolders from the base directory
-                        baseDir = sb.ToString() + baseDir.Substring(2);
-                    }
-                }
-                catch
-                {
-                    // Fall back to standard path if resolution fails
-                }
-            }
-
-            // Compute an 8-character hex hash based on the directory path
             string folderHash = ComputeHash(baseDir);
-
             string appDataFolder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MediaControlApp"
@@ -78,28 +103,118 @@ namespace Media_Status
         }
 
         /// <summary>
-        /// Convenient shortcut to save directly to the fast local C drive.
+        /// Loads from Master first, falls back to C: drive cache, and syncs both additively.
         /// </summary>
-        public static void SaveLocal(List<MediaItem> items)
+        public static List<MediaItem> LoadMasterAndSync()
         {
-            string cachePath = LocalCachePath;
-            string dir = Path.GetDirectoryName(cachePath)!;
-            if (!Directory.Exists(dir))
+            lock (FileLock)
             {
-                Directory.CreateDirectory(dir);
+                var masterList = Load(MasterPath);
+                var localList = Load(LocalCachePath);
+
+                var merged = MergeLists(masterList, localList);
+
+                SaveInternal(MasterPath, merged);
+                SaveInternal(LocalCachePath, merged);
+
+                return merged;
             }
-            Save(cachePath, items);
         }
 
-        /// <summary>
-        /// Convenient shortcut to load directly from the fast local C drive.
-        /// </summary>
+        public static void SaveAll(List<MediaItem> items)
+        {
+            lock (FileLock)
+            {
+                var masterList = Load(MasterPath);
+                var localList = Load(LocalCachePath);
+
+                var interim = MergeLists(masterList, localList);
+                var finalMerged = MergeLists(interim, items);
+
+                SaveInternal(MasterPath, finalMerged);
+                SaveInternal(LocalCachePath, finalMerged);
+            }
+        }
+
+        // =========================================================================
+        // COMPATIBILITY WRAPPERS TO FIX CS0117 COMPILATION ERRORS
+        // =========================================================================
         public static List<MediaItem> LoadLocal()
         {
-            return Load(LocalCachePath);
+            return LoadMasterAndSync();
+        }
+
+        public static void SaveLocal(List<MediaItem> items)
+        {
+            SaveAll(items);
         }
 
         public static void Save(string path, List<MediaItem> items)
+        {
+            lock (FileLock)
+            {
+                SaveInternal(path, items);
+            }
+        }
+        // =========================================================================
+
+        private static List<MediaItem> MergeLists(List<MediaItem> primary, List<MediaItem> secondary)
+        {
+            var dict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in primary)
+            {
+                if (string.IsNullOrEmpty(item.FilePath)) continue;
+                string key = Path.GetFileName(item.FilePath);
+                dict[key] = item;
+            }
+
+            foreach (var sec in secondary)
+            {
+                if (string.IsNullOrEmpty(sec.FilePath)) continue;
+                string fileName = Path.GetFileName(sec.FilePath);
+
+                if (dict.TryGetValue(fileName, out var pri))
+                {
+                    pri.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    pri.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    pri.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+                    sec.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    sec.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    sec.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+                    // Additive watch merge
+                    foreach (var kvp in sec.WatchedByUser)
+                    {
+                        bool priWatched = pri.WatchedByUser.TryGetValue(kvp.Key, out var pw) && pw;
+                        pri.WatchedByUser[kvp.Key] = priWatched || kvp.Value;
+                    }
+
+                    // Additive favorite merge
+                    foreach (var kvp in sec.FavouriteByUser)
+                    {
+                        bool priFav = pri.FavouriteByUser.TryGetValue(kvp.Key, out var pf) && pf;
+                        pri.FavouriteByUser[kvp.Key] = priFav || kvp.Value;
+                    }
+
+                    // Furthest playback position merge
+                    foreach (var kvp in sec.SavedPositionByUser)
+                    {
+                        double priPos = pri.SavedPositionByUser.TryGetValue(kvp.Key, out var pp) ? pp : 0;
+                        pri.SavedPositionByUser[kvp.Key] = Math.Max(priPos, kvp.Value);
+                    }
+                }
+                else
+                {
+                    dict[fileName] = sec;
+                }
+            }
+
+            return dict.Values.ToList();
+        }
+
+        private static void SaveInternal(string path, List<MediaItem> items)
         {
             if (string.IsNullOrWhiteSpace(path)) return;
 
@@ -110,142 +225,30 @@ namespace Media_Status
             }
 
             var json = JsonSerializer.Serialize(items, Options);
-
-            // Use a unique temp file name per save to prevent multi-threaded collision on network shares
             string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
-            // Synchronize threads within the same process to prevent concurrent file access
-            lock (FileLock)
+            File.WriteAllText(tempPath, json);
+            if (File.Exists(path))
             {
-                int maxRetries = 5;
-                for (int i = 0; i < maxRetries; i++)
-                {
-                    try
-                    {
-                        File.WriteAllText(tempPath, json);
-
-                        if (File.Exists(path))
-                        {
-                            ReplaceFileSafely(tempPath, path);
-                        }
-                        else
-                        {
-                            File.Move(tempPath, path);
-                        }
-
-                        break;
-                    }
-                    catch (IOException)
-                    {
-                        if (i == maxRetries - 1) throw;
-                        Thread.Sleep(300); // Slightly increased delay for network drives
-                    }
-                    finally
-                    {
-                        // Clean up the unique temp file if it somehow got left behind
-                        try
-                        {
-                            if (File.Exists(tempPath))
-                            {
-                                File.Delete(tempPath);
-                            }
-                        }
-                        catch { }
-                    }
-                }
+                File.Delete(path);
             }
-        }
-
-        private static void ReplaceFileSafely(string tempPath, string path)
-        {
-            string backupPath = path + "." + Guid.NewGuid().ToString("N") + ".bak";
-
-            try
-            {
-                File.Replace(tempPath, path, backupPath);
-            }
-            catch (NotSupportedException)
-            {
-                ReplaceUsingBackup(tempPath, path);
-            }
-            catch (IOException)
-            {
-                ReplaceUsingBackup(tempPath, path);
-            }
-
-            try
-            {
-                if (File.Exists(backupPath))
-                {
-                    File.Delete(backupPath);
-                }
-            }
-            catch (IOException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to remove replaced cache backup {backupPath}: {ex.Message}");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to remove replaced cache backup {backupPath}: {ex.Message}");
-            }
-        }
-
-        private static void ReplaceUsingBackup(string tempPath, string path)
-        {
-            if (!File.Exists(path))
-            {
-                File.Move(tempPath, path);
-                return;
-            }
-
-            string backupPath = path + "." + Guid.NewGuid().ToString("N") + ".bak";
-            File.Move(path, backupPath);
-
-            try
-            {
-                File.Move(tempPath, path);
-            }
-            catch (Exception replaceError)
-            {
-                try
-                {
-                    if (File.Exists(path))
-                    {
-                        throw new IOException($"The replacement target was recreated; the original cache remains at {backupPath}.");
-                    }
-
-                    File.Move(backupPath, path);
-                }
-                catch (Exception restoreError)
-                {
-                    throw new IOException(
-                        $"Failed to replace the cache. The original cache is preserved at {backupPath}.",
-                        new AggregateException(replaceError, restoreError));
-                }
-
-                throw;
-            }
-
+            File.Move(tempPath, path);
         }
 
         public static List<MediaItem> Load(string path)
         {
-            lock (FileLock)
-            {
-                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                    return new List<MediaItem>();
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return new List<MediaItem>();
 
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    return JsonSerializer.Deserialize<List<MediaItem>>(json, Options)
-                           ?? new List<MediaItem>();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load cache from {path}: {ex.Message}");
-                    return new List<MediaItem>();
-                }
+            try
+            {
+                var json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<List<MediaItem>>(json, Options)
+                       ?? new List<MediaItem>();
+            }
+            catch
+            {
+                return new List<MediaItem>();
             }
         }
     }

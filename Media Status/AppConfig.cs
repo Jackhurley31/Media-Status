@@ -7,8 +7,6 @@ using Microsoft.Win32;
 
 namespace Media_Status
 {
-
-
     public class UserSettings
     {
         public bool DarkMode { get; set; } = true;
@@ -29,16 +27,16 @@ namespace Media_Status
 
     public static class AppConfig
     {
-        private static readonly string AppDataFolder = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "MediaControlApp"
-                );
+        private static readonly string LocalAppDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MediaControlApp"
+        );
 
-        // users.json will live in the folder where the tool is running
-        public static readonly string UsersFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "users.json");
+        // Dynamically routes users.json to the active NAS directory (via redirect file) or falls back locally
+        public static string UsersFilePath => Path.Combine(Media_Status.MediaCache.GetActiveRootDirectory(), "users.json");
 
-        // Settings files will stay in Local AppData
-        public static string ConfigFilePath => Path.Combine(AppDataFolder, $"app_settings_{CurrentUser.ToLowerInvariant()}.json");
+        // Dynamically routes app settings to the active NAS directory (via redirect file) or falls back locally
+        public static string ConfigFilePath => Path.Combine(LocalAppDataFolder, $"app_settings_{CurrentUser.ToLowerInvariant()}.json");
 
         public static string CurrentUser { get; private set; } = Environment.UserName;
 
@@ -48,9 +46,9 @@ namespace Media_Status
 
         private static void EnsureDirectoryExists()
         {
-            if (!Directory.Exists(AppDataFolder))
+            if (!Directory.Exists(LocalAppDataFolder))
             {
-                Directory.CreateDirectory(AppDataFolder);
+                Directory.CreateDirectory(LocalAppDataFolder);
             }
         }
 
@@ -68,15 +66,11 @@ namespace Media_Status
                 db.Users = new List<UserProfile>();
             }
 
-            // Match the profile name to the current Windows computer user
             string windowsUser = Environment.UserName;
-
-            // Check if this Windows user exists in the shared NAS users.json file
             bool userExists = db.Users.Exists(u => u.Username.Equals(windowsUser, StringComparison.OrdinalIgnoreCase));
 
             if (!userExists)
             {
-                // If this computer's user isn't registered yet, prompt to create/set up their profile
                 using (var setupForm = new UserSetupForm())
                 {
                     if (setupForm.ShowDialog() == DialogResult.OK)
@@ -100,10 +94,7 @@ namespace Media_Status
             }
             else
             {
-                // Automatically lock/select the profile matching this Windows computer user
                 CurrentUser = windowsUser;
-
-                // Optionally update active user in db so it reflects accurately
                 db.ActiveUser = windowsUser;
                 SaveUserDatabase(db);
             }
@@ -115,9 +106,16 @@ namespace Media_Status
         {
             try
             {
-                if (File.Exists(UsersFilePath))
+                string path = UsersFilePath;
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
-                    string json = File.ReadAllText(UsersFilePath);
+                    Directory.CreateDirectory(dir);
+                }
+
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
                     return JsonSerializer.Deserialize<UserDatabase>(json) ?? new UserDatabase();
                 }
             }
@@ -133,9 +131,15 @@ namespace Media_Status
         {
             try
             {
-                EnsureDirectoryExists();
+                string path = UsersFilePath;
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
                 string json = JsonSerializer.Serialize(db, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(UsersFilePath, json);
+                File.WriteAllText(path, json);
             }
             catch (Exception ex)
             {
@@ -147,20 +151,14 @@ namespace Media_Status
         {
             if (settings.RunOnStartup)
             {
-                // Re-applies the path of whichever executable is currently running
                 SetStartupRegistry(true);
             }
         }
 
-
-        /// <summary>
-        /// Switches the active user, saves the database, and returns the updated username.
-        /// </summary>
         public static void SwitchUser(string username)
         {
             UserDatabase db = LoadUserDatabase();
 
-            // If the user doesn't exist in the list yet, add them
             if (!db.Users.Exists(u => u.Username.Equals(username, StringComparison.OrdinalIgnoreCase)))
             {
                 db.Users.Add(new UserProfile { Username = username, IsDefault = false });
@@ -168,14 +166,9 @@ namespace Media_Status
 
             db.ActiveUser = username;
             SaveUserDatabase(db);
-
-            // Update the runtime property
             CurrentUser = username;
         }
 
-        /// <summary>
-        /// Gets a list of all registered usernames.
-        /// </summary>
         public static List<string> GetAllUsernames()
         {
             UserDatabase db = LoadUserDatabase();
@@ -187,22 +180,19 @@ namespace Media_Status
             return names;
         }
 
-
-
-
-
         public static UserSettings Load()
         {
             UserSettings settings = null;
             bool forceSave = false;
 
+            string dynamicConfigPath = ConfigFilePath;
+
             try
             {
-                if (File.Exists(ConfigFilePath))
+                if (File.Exists(dynamicConfigPath))
                 {
-                    string rawJson = File.ReadAllText(ConfigFilePath);
+                    string rawJson = File.ReadAllText(dynamicConfigPath);
 
-                    // Check for core properties to see if migration/re-save is needed
                     if (!rawJson.Contains("CustomPlayerPath") || !rawJson.Contains("RunOnStartup") || !rawJson.Contains("UIFontSize"))
                     {
                         forceSave = true;
@@ -245,7 +235,12 @@ namespace Media_Status
         {
             try
             {
-                EnsureDirectoryExists();
+                string path = ConfigFilePath;
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
 
                 if (string.IsNullOrWhiteSpace(settings.CustomPlayerPath))
                 {
@@ -253,9 +248,8 @@ namespace Media_Status
                 }
 
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(ConfigFilePath, json);
+                File.WriteAllText(path, json);
 
-                // Update registry startup entry
                 SetStartupRegistry(settings.RunOnStartup);
             }
             catch (Exception ex)
