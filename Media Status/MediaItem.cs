@@ -52,14 +52,21 @@ namespace MediaControlApp.Models
             WatchedByUser[username] = true;
         }
 
-        // Gets LastWriteTime safely or returns MinValue if missing/unreachable
+
+        // Gets LastWriteTime instantly from memory cache to prevent network lag
         public DateTime GetDateModified(string resolvedFullPath)
         {
+            if (CachedDateModified != DateTime.MinValue)
+            {
+                return CachedDateModified;
+            }
+
             try
             {
                 if (!string.IsNullOrEmpty(resolvedFullPath) && File.Exists(resolvedFullPath))
                 {
-                    return File.GetLastWriteTime(resolvedFullPath);
+                    CachedDateModified = File.GetLastWriteTime(resolvedFullPath);
+                    return CachedDateModified;
                 }
             }
             catch { }

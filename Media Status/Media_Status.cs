@@ -67,13 +67,15 @@ namespace MediaControlApp.Forms
         private readonly object _dirtyLock = new object();
         private bool _isDirty = false;
 
-
+        private string _cachedRootFolder = null;
 
 
         public string RootFolder
         {
             get
             {
+                if (_cachedRootFolder != null) return _cachedRootFolder;
+
                 // 1. Check if a redirect configuration file exists next to the executable
                 string redirectFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "media_state_redirect.txt");
                 if (File.Exists(redirectFile))
@@ -83,7 +85,8 @@ namespace MediaControlApp.Forms
                         string redirectedPath = File.ReadAllText(redirectFile).Trim();
                         if (!string.IsNullOrWhiteSpace(redirectedPath) && Directory.Exists(redirectedPath))
                         {
-                            return redirectedPath;
+                            _cachedRootFolder = redirectedPath;
+                            return _cachedRootFolder;
                         }
                     }
                     catch (Exception ex)
@@ -93,7 +96,8 @@ namespace MediaControlApp.Forms
                 }
 
                 // 2. Default fallback: folder where the executable is stored
-                return AppDomain.CurrentDomain.BaseDirectory;
+                _cachedRootFolder = AppDomain.CurrentDomain.BaseDirectory;
+                return _cachedRootFolder;
             }
         }
 
@@ -667,24 +671,9 @@ namespace MediaControlApp.Forms
                 var recentTvItems = tvItems
                     .Where(i =>
                     {
-                        // Use cached date directly if available, fallback safely without hitting File.GetLastWriteTime on UI thread
+                        // Use cached date directly from memory to guarantee zero network lag on UI thread
                         DateTime modDate = i.CachedDateModified;
-                        if (modDate == DateTime.MinValue)
-                        {
-                            try
-                            {
-                                string fullPath = BuildFullPath(i.FilePath);
-                                if (File.Exists(fullPath))
-                                {
-                                    modDate = File.GetLastWriteTime(fullPath);
-                                    i.CachedDateModified = modDate; // Cache it so it never lags again
-                                }
-                            }
-                            catch { }
-                        }
-
-                        // Check if the item's modification date falls within the current year and month
-                        return modDate.Year == now.Year && modDate.Month == now.Month;
+                        return modDate != DateTime.MinValue && modDate.Year == now.Year && modDate.Month == now.Month;
                     })
                     .ToList();
 
@@ -1029,24 +1018,22 @@ namespace MediaControlApp.Forms
             string rootName = showNode.Text.Trim();
 
             // 2. Ignore the main "Films" category entirely
-            // CHECK IF CLICKED NODE IS UNDER "Films"
             if (rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
             {
                 string nodeText = e.Node.Text.Replace("★ ", "").Trim();
 
-                // If the user clicked the main "Films" header, a Year folder, or the "Other" folder, 
-                // they don't have media items in their Tag. Clear the poster and exit!
                 if (e.Node.Tag == null || nodeText.Equals("Other", StringComparison.OrdinalIgnoreCase))
                 {
+                    _posterCancellationTokenSource?.Cancel();
                     picPoster.Image = null;
                     return;
                 }
 
-                // If it's an actual individual film node (Tag contains the media list), load the poster
                 if (e.Node.Tag is List<MediaItem> filmList && filmList.Count > 0)
                 {
                     string filmTitle = nodeText;
-                    await LoadAutoFilmPosterAsync(filmTitle);
+                    // Run asynchronously without blocking the UI thread selection response
+                    _ = LoadAutoFilmPosterAsync(filmTitle);
                     return;
                 }
             }
@@ -1061,14 +1048,12 @@ namespace MediaControlApp.Forms
             {
                 var mediaItem = e.Node.Tag as MediaItem;
 
-                // If it has a cached series name, use that (means it's a TV show episode)
                 if (mediaItem != null && !string.IsNullOrEmpty(mediaItem.CachedSeriesName))
                 {
                     showTitle = mediaItem.CachedSeriesName;
                 }
                 else if (e.Node.Parent != null)
                 {
-                    // Otherwise, walk up the node hierarchy inside the smart list to find the grouping
                     TreeNode current = e.Node;
                     while (current.Parent != null && current.Parent.Parent != null)
                     {
@@ -1078,21 +1063,23 @@ namespace MediaControlApp.Forms
                 }
                 else
                 {
-                    // Clicked the category header itself
+                    _posterCancellationTokenSource?.Cancel();
                     picPoster.Image = null;
                     return;
                 }
             }
 
-            // 5. Final safety check: if the title still points to a category header or empty string, abort
+            // 5. Final safety check
             string[] ignoredCategories = { "Top", "Continue", "Watched", "Recently added", "Films" };
             if (Array.Exists(ignoredCategories, cat => cat.Equals(showTitle, StringComparison.OrdinalIgnoreCase)))
             {
+                _posterCancellationTokenSource?.Cancel();
                 picPoster.Image = null;
                 return;
             }
 
-            await LoadAutoOnlinePosterAsync(showTitle);
+            // Fire asynchronously so tree navigation stays instant and responsive
+            _ = LoadAutoOnlinePosterAsync(showTitle);
         }
 
 
@@ -2329,6 +2316,10 @@ namespace MediaControlApp.Forms
                 if (relativeDict.TryGetValue(relFile, out var existingItem))
                 {
                     existingItem.FilePath = file; // Update to current PC's path format
+
+                    // Cache date in background scan to prevent UI network lag
+                    try { existingItem.CachedDateModified = File.GetLastWriteTime(file); } catch { }
+
                     if (string.IsNullOrWhiteSpace(existingItem.CachedSeriesName))
                         existingItem.CacheParsed();
 
@@ -2338,6 +2329,10 @@ namespace MediaControlApp.Forms
                 else if (fileNameDict.TryGetValue(Path.GetFileName(file), out var movedItem))
                 {
                     movedItem.FilePath = file;
+
+                    // Cache date in background scan
+                    try { movedItem.CachedDateModified = File.GetLastWriteTime(file); } catch { }
+
                     if (string.IsNullOrWhiteSpace(movedItem.CachedSeriesName))
                         movedItem.CacheParsed();
 
@@ -2353,6 +2348,9 @@ namespace MediaControlApp.Forms
                         WatchedByUser = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
                         FavouriteByUser = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
                     };
+
+                    try { mi.CachedDateModified = File.GetLastWriteTime(file); } catch { }
+
                     mi.CacheParsed();
                     merged.Add(mi);
                 }
@@ -2674,12 +2672,12 @@ namespace MediaControlApp.Forms
 
         private bool HasValidSelectionForExplorer()
         {
-            // 1. Check ListView Selection
+            // 1. Check ListView Selection (Validate via memory string instead of SMB disk I/O)
             if (listEpisodes.SelectedItems.Count > 0)
             {
                 return listEpisodes.SelectedItems
                     .Cast<ListViewItem>()
-                    .Any(li => li.Tag is MediaItem ep && File.Exists(BuildFullPath(ep.FilePath)));
+                    .Any(li => li.Tag is MediaItem ep && !string.IsNullOrEmpty(ep.FilePath));
             }
 
             // 2. Check TreeView Selection
@@ -2688,20 +2686,18 @@ namespace MediaControlApp.Forms
 
             if (node.Tag is List<MediaItem> seasonItems)
             {
-                var firstEp = seasonItems.FirstOrDefault();
-                return firstEp != null && Directory.Exists(Path.GetDirectoryName(BuildFullPath(firstEp.FilePath)));
+                return seasonItems.Count > 0;
             }
 
             if (node.Tag is MediaItem episode)
             {
-                return File.Exists(BuildFullPath(episode.FilePath));
+                return !string.IsNullOrEmpty(episode.FilePath);
             }
 
             if (node.Tag == null)
             {
                 string seriesName = node.Text.Replace("★ ", "").Trim();
-                var seriesEp = items.FirstOrDefault(i => string.Equals(i.CachedSeriesName, seriesName, StringComparison.OrdinalIgnoreCase));
-                return seriesEp != null && Directory.Exists(Path.GetDirectoryName(BuildFullPath(seriesEp.FilePath)));
+                return items.Any(i => string.Equals(i.CachedSeriesName, seriesName, StringComparison.OrdinalIgnoreCase));
             }
 
             return false;

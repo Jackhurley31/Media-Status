@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Media_Status
 {
@@ -32,7 +33,6 @@ namespace Media_Status
                     string redirectedPath = File.ReadAllText(redirectFile).Trim();
                     if (!string.IsNullOrWhiteSpace(redirectedPath))
                     {
-                        // If it points directly to a file path or directory, resolve accordingly
                         if (Directory.Exists(redirectedPath) || !Path.HasExtension(redirectedPath))
                         {
                             return redirectedPath;
@@ -49,7 +49,7 @@ namespace Media_Status
             return AppDomain.CurrentDomain.BaseDirectory;
         }
 
-        // 1. Master file path (points to NAS via redirect file if present, otherwise local)
+        // 1. Master file path (NAS via redirect file if present)
         public static string MasterPath
         {
             get
@@ -103,7 +103,31 @@ namespace Media_Status
         }
 
         /// <summary>
-        /// Loads from Master first, falls back to C: drive cache, and syncs both additively.
+        /// Lightning-fast load: Reads ONLY from the local C: drive cache to eliminate network stutter.
+        /// </summary>
+        public static List<MediaItem> LoadLocal()
+        {
+            lock (FileLock)
+            {
+                // If local cache doesn't exist yet, fall back to master once
+                if (!File.Exists(LocalCachePath))
+                {
+                    return LoadMasterAndSync();
+                }
+                return Load(LocalCachePath);
+            }
+        }
+
+        /// <summary>
+        /// Lightning-fast save: Writes to local cache instantly and triggers background NAS sync.
+        /// </summary>
+        public static void SaveLocal(List<MediaItem> items)
+        {
+            SaveAll(items);
+        }
+
+        /// <summary>
+        /// Heavy sync method: Merges local and master NAS states safely (called on startup/refresh).
         /// </summary>
         public static List<MediaItem> LoadMasterAndSync()
         {
@@ -125,28 +149,27 @@ namespace Media_Status
         {
             lock (FileLock)
             {
-                var masterList = Load(MasterPath);
-                var localList = Load(LocalCachePath);
-
-                var interim = MergeLists(masterList, localList);
-                var finalMerged = MergeLists(interim, items);
-
-                SaveInternal(MasterPath, finalMerged);
-                SaveInternal(LocalCachePath, finalMerged);
+                // 1. Save instantly to local C: drive cache (NVMe/SSD speed)
+                SaveInternal(LocalCachePath, items);
             }
-        }
 
-        // =========================================================================
-        // COMPATIBILITY WRAPPERS TO FIX CS0117 COMPILATION ERRORS
-        // =========================================================================
-        public static List<MediaItem> LoadLocal()
-        {
-            return LoadMasterAndSync();
-        }
-
-        public static void SaveLocal(List<MediaItem> items)
-        {
-            SaveAll(items);
+            // 2. Push updates to the master NAS file asynchronously in the background
+            Task.Run(() =>
+            {
+                lock (FileLock)
+                {
+                    try
+                    {
+                        var masterList = Load(MasterPath);
+                        var finalMerged = MergeLists(masterList, items);
+                        SaveInternal(MasterPath, finalMerged);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Background NAS sync deferred: {ex.Message}");
+                    }
+                }
+            });
         }
 
         public static void Save(string path, List<MediaItem> items)
@@ -156,7 +179,6 @@ namespace Media_Status
                 SaveInternal(path, items);
             }
         }
-        // =========================================================================
 
         private static List<MediaItem> MergeLists(List<MediaItem> primary, List<MediaItem> secondary)
         {
@@ -184,21 +206,18 @@ namespace Media_Status
                     sec.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                     sec.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
-                    // Additive watch merge
                     foreach (var kvp in sec.WatchedByUser)
                     {
                         bool priWatched = pri.WatchedByUser.TryGetValue(kvp.Key, out var pw) && pw;
                         pri.WatchedByUser[kvp.Key] = priWatched || kvp.Value;
                     }
 
-                    // Additive favorite merge
                     foreach (var kvp in sec.FavouriteByUser)
                     {
                         bool priFav = pri.FavouriteByUser.TryGetValue(kvp.Key, out var pf) && pf;
                         pri.FavouriteByUser[kvp.Key] = priFav || kvp.Value;
                     }
 
-                    // Furthest playback position merge
                     foreach (var kvp in sec.SavedPositionByUser)
                     {
                         double priPos = pri.SavedPositionByUser.TryGetValue(kvp.Key, out var pp) ? pp : 0;
