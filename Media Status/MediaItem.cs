@@ -147,7 +147,9 @@ namespace MediaControlApp.Models
                     !parentDirName.Equals("ToSort", StringComparison.OrdinalIgnoreCase) &&
                     !parentDirName.Contains(":"))
                 {
-                    return CleanName(parentDirName);
+                    // Strip release years (e.g., "Show 2026" or "Show (2026)") so it matches regular show names
+                    string normalizedFolder = Regex.Replace(parentDirName, @"\b(19|20)\d{2}\b", "");
+                    return CleanName(normalizedFolder);
                 }
             }
             catch { }
@@ -259,6 +261,9 @@ namespace MediaControlApp.Models
 
             // Strip bracketed tags e.g. [www Movcr tv], [720p], [YTS MX]
             clean = Regex.Replace(clean, @"\[.*?\]", " ");
+
+            // Strip standalone years like 2024, 2025, 2026 from series names
+            clean = Regex.Replace(clean, @"\b(19|20)\d{2}\b", " ");
 
             // Strip multi-season/range patterns e.g. "Season 1 and 2", "Seasons 1-3", "Season 1 & 2", "S01-S02"
             clean = Regex.Replace(clean, @"(?i)\b(Seasons?|Series)\s*\d+([\s,&\-and]+\d+)*\b", " ");

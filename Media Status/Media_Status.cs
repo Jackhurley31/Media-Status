@@ -1,20 +1,11 @@
 using Media_Status;
-using Media_Status.Properties;
-using MediaControlApp.Helpers;
 using MediaControlApp.Models;
 using MediaStatus;
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Windows.Forms;
 
 using static MediaControlApp.OptionsForm;
 
@@ -241,7 +232,7 @@ namespace MediaControlApp.Forms
 
 
 
-       
+
 
         private UserSettings userSettings = new UserSettings();
 
@@ -1638,24 +1629,12 @@ namespace MediaControlApp.Forms
         }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         private async Task SaveAndMergeState()
         {
-            // Snapshot state variables on UI thread before hopping to background thread
-            var localItemsSnapshot = items.ToList();
+            var localItemsSnapshot = items != null ? items.ToList() : new List<MediaItem>();
             var currentUser = AppConfig.CurrentUser ?? "Default";
             var jsonPath = JsonPath;
+            var rootFolder = RootFolder;
 
             await Task.Run(() =>
             {
@@ -1664,91 +1643,74 @@ namespace MediaControlApp.Forms
                 {
                     try
                     {
-                        // 1. Create timestamped backup before modifying anything on disk
+                        // 1. Create a timestamped backup before touching disk
                         CreateJsonBackup();
 
-                        // 2. Read disk state on background thread to safely merge progress from other devices/users[cite: 1]
-                        if (File.Exists(jsonPath))
+                        // 2. Load existing persistent database from disk if it exists
+                        var masterDatabaseItems = File.Exists(jsonPath) ? MediaCache.Load(jsonPath) : new List<MediaItem>();
+
+                        // Build a master lookup dictionary by relative path to track all known history permanently
+                        var masterDict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var dbItem in masterDatabaseItems)
                         {
-                            var diskItems = MediaCache.Load(jsonPath);
-
-                            var localDict = localItemsSnapshot.ToDictionary(
-                                i => i.FilePath,
-                                i => i,
-                                StringComparer.OrdinalIgnoreCase
-                            );
-
-                            foreach (var diskItem in diskItems)
+                            if (string.IsNullOrEmpty(dbItem.FilePath)) continue;
+                            string relPath = Path.GetRelativePath(rootFolder, BuildFullPath(dbItem.FilePath));
+                            if (!masterDict.ContainsKey(relPath))
                             {
-                                if (!string.IsNullOrEmpty(diskItem.FilePath) &&
-                                    localDict.TryGetValue(diskItem.FilePath, out var localItem))
-                                {
-                                    localItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                                    localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                                    localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-
-                                    // Capture current live in-memory state
-                                    bool hasInMemWatched = localItem.WatchedByUser.TryGetValue(currentUser, out var memWatched) && memWatched;
-                                    bool hasInMemFav = localItem.FavouriteByUser.TryGetValue(currentUser, out var memFav) && memFav;
-                                    double inMemPos = localItem.SavedPositionByUser.TryGetValue(currentUser, out var memPos) ? memPos : 0;
-
-                                    // Merge other users' data from disk safely
-                                    if (diskItem.WatchedByUser != null)
-                                    {
-                                        foreach (var kvp in diskItem.WatchedByUser)
-                                        {
-                                            if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                bool diskOtherWatched = kvp.Value;
-                                                bool localOtherWatched = localItem.WatchedByUser.TryGetValue(kvp.Key, out var lOther) && lOther;
-                                                localItem.WatchedByUser[kvp.Key] = localOtherWatched || diskOtherWatched;
-                                            }
-                                        }
-                                    }
-
-                                    if (diskItem.FavouriteByUser != null)
-                                    {
-                                        foreach (var kvp in diskItem.FavouriteByUser)
-                                        {
-                                            if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                localItem.FavouriteByUser[kvp.Key] = localItem.FavouriteByUser.TryGetValue(kvp.Key, out var lFav) && lFav || kvp.Value;
-                                            }
-                                        }
-                                    }
-
-                                    if (diskItem.SavedPositionByUser != null)
-                                    {
-                                        foreach (var kvp in diskItem.SavedPositionByUser)
-                                        {
-                                            if (!string.Equals(kvp.Key, currentUser, StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                localItem.SavedPositionByUser[kvp.Key] = Math.Max(
-                                                    localItem.SavedPositionByUser.TryGetValue(kvp.Key, out var lPos) ? lPos : 0,
-                                                    kvp.Value
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    // STRICTLY ADDITIVE WATCHED PROTECTION: If it was ever watched on disk or memory, keep it true!
-                                    bool diskUserWatched = diskItem.WatchedByUser?.TryGetValue(currentUser, out var dWatch) == true && dWatch;
-                                    localItem.WatchedByUser[currentUser] = hasInMemWatched || diskUserWatched;
-
-                                    // Protect favorites from being cleared out
-                                    bool diskUserFav = diskItem.FavouriteByUser?.TryGetValue(currentUser, out var dFav) == true && dFav;
-                                    localItem.FavouriteByUser[currentUser] = hasInMemFav || diskUserFav;
-
-                                    // Retain the furthest playback position safely
-                                    double diskUserPos = diskItem.SavedPositionByUser?.TryGetValue(currentUser, out var dPos) == true ? dPos : 0;
-                                    localItem.SavedPositionByUser[currentUser] = Math.Max(inMemPos, diskUserPos);
-                                }
+                                masterDict[relPath] = dbItem;
                             }
                         }
 
-                        // 3. Save merged items to the master NAS file and your isolated local C-drive cache[cite: 1]
-                        MediaCache.Save(jsonPath, localItemsSnapshot);
-                        MediaCache.SaveLocal(localItemsSnapshot);
+                        // 3. Merge every currently active in-memory item into the master database dictionary
+                        foreach (var localItem in localItemsSnapshot)
+                        {
+                            if (string.IsNullOrEmpty(localItem.FilePath)) continue;
+                            string relPath = Path.GetRelativePath(rootFolder, BuildFullPath(localItem.FilePath));
+
+                            if (masterDict.TryGetValue(relPath, out var existingMasterItem))
+                            {
+                                existingMasterItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                                existingMasterItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                                existingMasterItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+                                localItem.WatchedByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                                localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                                localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+                                // Strictly additive watched protection (if true anywhere, keep true)
+                                bool masterWatched = existingMasterItem.WatchedByUser.TryGetValue(currentUser, out var mw) && mw;
+                                bool localWatched = localItem.WatchedByUser.TryGetValue(currentUser, out var lw) && lw;
+                                existingMasterItem.WatchedByUser[currentUser] = masterWatched || localWatched;
+
+                                // Preserve favorites
+                                bool masterFav = existingMasterItem.FavouriteByUser.TryGetValue(currentUser, out var mf) && mf;
+                                bool localFav = localItem.FavouriteByUser.TryGetValue(currentUser, out var lf) && lf;
+                                existingMasterItem.FavouriteByUser[currentUser] = masterFav || localFav;
+
+                                // Preserve furthest playback position
+                                double masterPos = existingMasterItem.SavedPositionByUser.TryGetValue(currentUser, out var mp) ? mp : 0;
+                                double localPos = localItem.SavedPositionByUser.TryGetValue(currentUser, out var lp) ? lp : 0;
+                                existingMasterItem.SavedPositionByUser[currentUser] = Math.Max(masterPos, localPos);
+
+                                // Update path in case it was renamed
+                                existingMasterItem.FilePath = localItem.FilePath;
+                            }
+                            else
+                            {
+                                // Brand new item: add it cleanly to our master history tracker
+                                masterDict[relPath] = localItem;
+                            }
+                        }
+
+                        // Collect the final combined list ensuring NO historical watched data is ever dropped
+                        var finalMergedList = masterDict.Values.ToList();
+
+                        // 4. Save safely to both master NAS and local cache
+                        MediaCache.Save(jsonPath, finalMergedList);
+                        MediaCache.SaveLocal(finalMergedList);
+
+                        items = finalMergedList;
 
                         break; // Success
                     }
@@ -1759,7 +1721,7 @@ namespace MediaControlApp.Forms
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine(ex.Message);
+                        System.Diagnostics.Debug.WriteLine($"[SaveAndMergeError] {ex.Message}");
                         break;
                     }
                 }
@@ -2134,6 +2096,10 @@ namespace MediaControlApp.Forms
 
             try
             {
+                // 1. Force save current in-memory state and progress before scanning disk
+                await SaveAndMergeState();
+
+                // 2. Now run the disk scan and merge safely
                 await Task.Run(() => ScanDiskAndMerge(progress));
 
                 btnRefresh.Text = "Building Tree...";
@@ -2257,8 +2223,26 @@ namespace MediaControlApp.Forms
         {
             progress?.Report("Loading Master State...");
 
-            // 1. Load the master state directly from the NAS first (Source of Truth)
-            var masterItems = MediaCache.Load(JsonPath) ?? new List<MediaItem>();
+            // 1. Load baseline items and disk master to ensure all historical data is present
+            var masterItems = items != null ? items.ToList() : new List<MediaItem>();
+            if (File.Exists(JsonPath))
+            {
+                var diskMaster = MediaCache.Load(JsonPath);
+                if (diskMaster != null && diskMaster.Count > 0)
+                {
+                    var baselineDict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var item in masterItems.Concat(diskMaster))
+                    {
+                        if (!string.IsNullOrEmpty(item.FilePath))
+                        {
+                            string relKey = Path.GetRelativePath(RootFolder, BuildFullPath(item.FilePath));
+                            baselineDict[relKey] = item;
+                        }
+                    }
+                    masterItems = baselineDict.Values.ToList();
+                }
+            }
+
             foreach (var it in masterItems)
             {
                 if (string.IsNullOrWhiteSpace(it.CachedSeriesName))
@@ -2269,7 +2253,6 @@ namespace MediaControlApp.Forms
                 return;
 
             var videoExtSet = new HashSet<string>(VideoExtensions, StringComparer.OrdinalIgnoreCase);
-            var merged = new List<MediaItem>();
 
             progress?.Report("Scanning Disk...");
 
@@ -2281,7 +2264,7 @@ namespace MediaControlApp.Forms
             int totalFiles = foundFiles.Count;
             int processed = 0;
 
-            // Build lookup maps from the master NAS state
+            // Build lookup maps from the master baseline state
             var relativeDict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
             var fileNameDict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
 
@@ -2302,6 +2285,9 @@ namespace MediaControlApp.Forms
                 }
             }
 
+            // Track items successfully found on disk during this scan
+            var activeFoundItems = new HashSet<MediaItem>();
+
             foreach (var file in foundFiles)
             {
                 processed++;
@@ -2312,34 +2298,30 @@ namespace MediaControlApp.Forms
 
                 string relFile = Path.GetRelativePath(RootFolder, file);
 
-                // 2. Match by relative path inside tool folder (Works across all PCs & Tailscale)
+                // Match by relative path inside tool folder
                 if (relativeDict.TryGetValue(relFile, out var existingItem))
                 {
-                    existingItem.FilePath = file; // Update to current PC's path format
-
-                    // Cache date in background scan to prevent UI network lag
+                    existingItem.FilePath = file;
                     try { existingItem.CachedDateModified = File.GetLastWriteTime(file); } catch { }
 
                     if (string.IsNullOrWhiteSpace(existingItem.CachedSeriesName))
                         existingItem.CacheParsed();
 
-                    merged.Add(existingItem);
+                    activeFoundItems.Add(existingItem);
                 }
-                // 3. Fallback: Match by filename if folder structure changed slightly
+                // Fallback: Match by filename
                 else if (fileNameDict.TryGetValue(Path.GetFileName(file), out var movedItem))
                 {
                     movedItem.FilePath = file;
-
-                    // Cache date in background scan
                     try { movedItem.CachedDateModified = File.GetLastWriteTime(file); } catch { }
 
                     if (string.IsNullOrWhiteSpace(movedItem.CachedSeriesName))
                         movedItem.CacheParsed();
 
-                    merged.Add(movedItem);
+                    activeFoundItems.Add(movedItem);
                     fileNameDict.Remove(Path.GetFileName(file));
                 }
-                // 4. Truly brand new file
+                // Truly brand new file
                 else
                 {
                     var mi = new MediaItem
@@ -2352,14 +2334,34 @@ namespace MediaControlApp.Forms
                     try { mi.CachedDateModified = File.GetLastWriteTime(file); } catch { }
 
                     mi.CacheParsed();
-                    merged.Add(mi);
+                    activeFoundItems.Add(mi);
+                }
+            }
+
+            // HELPER: Check if a media item carries valuable user data (watched, favorite, or progress)
+            bool HasUserData(MediaItem item)
+            {
+                if (item == null) return false;
+                bool watched = item.WatchedByUser != null && item.WatchedByUser.Values.Any(v => v);
+                bool fav = item.FavouriteByUser != null && item.FavouriteByUser.Values.Any(v => v);
+                bool pos = item.SavedPositionByUser != null && item.SavedPositionByUser.Values.Any(p => p > 0);
+                return watched || fav || pos;
+            }
+
+            // SAFETY RULE: Always retain any historical master item that contains user data, 
+            // even if the file wasn't picked up during this particular disk scan.
+            foreach (var masterItem in masterItems)
+            {
+                if (!activeFoundItems.Contains(masterItem) && HasUserData(masterItem))
+                {
+                    activeFoundItems.Add(masterItem);
                 }
             }
 
             progress?.Report("Saving State...");
-            items = merged;
+            items = activeFoundItems.ToList();
 
-            // 5. Save back to the master NAS JSON file and update local cache safely
+            // Save back to master NAS file and local cache safely
             MediaCache.Save(JsonPath, items);
             MediaCache.SaveLocal(items);
         }
@@ -2536,6 +2538,7 @@ namespace MediaControlApp.Forms
             ApplyButtonStyle(OpenFileLocation, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnCollapseAll, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnoptions, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+            ApplyButtonStyle(btnRestoreBackup, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(BtnFavourite, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnRefresh, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnOrganiz, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
@@ -4110,7 +4113,7 @@ namespace MediaControlApp.Forms
             _ = PlayEpisodesQueueAsync(playbackQueue);
         }
 
-       
+
 
         private void btnResume_MouseDown(object sender, MouseEventArgs e)
         {
@@ -4628,14 +4631,18 @@ namespace MediaControlApp.Forms
             {
                 if (settingsForm.ShowDialog(this) == DialogResult.OK)
                 {
-                    // Persist values to Properties.Settings
-                    Settings.Default.RenameFormatPattern = settingsForm.CustomFormatPattern;
-                    Settings.Default.RenameIncludeShow = settingsForm.IncludeShow;
-                    Settings.Default.RenamePadNumbers = settingsForm.PadNumbers;
-                    Settings.Default.RenameReplaceWithSpaces = settingsForm.ReplaceWithSpaces;
-                    Settings.Default.RenameReplaceDots = settingsForm.ReplaceDots;
-                    Settings.Default.RenameRemoveSpecial = settingsForm.RemoveSpecial;
-                    Settings.Default.Save();
+                    // Load local settings from C: drive JSON via AppConfig
+                    var appSettings = AppConfig.Load();
+
+                    // Persist values to local JSON config
+                    appSettings.RenameFormatPattern = settingsForm.CustomFormatPattern;
+                    appSettings.RenameIncludeShow = settingsForm.IncludeShow;
+                    appSettings.RenamePadNumbers = settingsForm.PadNumbers;
+                    appSettings.RenameReplaceWithSpaces = settingsForm.ReplaceWithSpaces;
+                    appSettings.RenameReplaceDots = settingsForm.ReplaceDots;
+                    appSettings.RenameRemoveSpecial = settingsForm.RemoveSpecial;
+
+                    AppConfig.Save(appSettings);
                 }
             }
         }
@@ -4774,7 +4781,57 @@ namespace MediaControlApp.Forms
             }
         }
 
-     
+        private void btnRestoreBackup_Click(object sender, EventArgs e)
+        {
+            using (var form = new RestoreBackupForm(darkMode))
+            {
+                if (form.ShowDialog(this) == DialogResult.OK && form.SelectedBackup != null)
+                {
+                    BackupFileInfo selectedBackup = form.SelectedBackup;
+
+                    var confirm = DarkMessageBox.Show(
+                        this,
+                        $"Are you sure you want to restore from backup:\n\n'{selectedBackup.FileName}'?",
+                        "Confirm Restore",
+                        MessageBoxButtons.YesNo,
+                        darkMode
+                    );
+
+                    if (confirm == DialogResult.Yes)
+                    {
+                        this.Cursor = Cursors.WaitCursor;
+                        try
+                        {
+                            bool success = RestoreBackupForm.RestoreBackup(
+                                selectedBackup.FilePath,
+                                JsonPath
+                            );
+
+                            if (success)
+                            {
+                                items = MediaCache.Load(JsonPath);
+                                RefreshAll();
+                                DarkMessageBox.Show(this, "Database successfully restored from backup!", "Restore Complete", MessageBoxButtons.OK, darkMode);
+                            }
+                            else
+                            {
+                                DarkMessageBox.Show(this, "Failed to restore backup file.", "Error", MessageBoxButtons.OK, darkMode);
+                            }
+                        }
+                        finally
+                        {
+                            this.Cursor = Cursors.Default;
+                        }
+                    }
+                }
+            }
+        }
+
+
+
+
+
+
     }
 
 }

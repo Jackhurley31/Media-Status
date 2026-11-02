@@ -158,33 +158,33 @@ namespace MediaStatus
 
         private void AutoRenameSettingsForm_Load(object? sender, EventArgs e)
         {
-            string defaultPattern = Settings.Default.RenameFormatPattern;
-            txtCustomFormat.Text = string.IsNullOrWhiteSpace(defaultPattern)
+            var settings = Media_Status.AppConfig.Load();
+
+            txtCustomFormat.Text = string.IsNullOrWhiteSpace(settings.RenameFormatPattern)
                 ? "{Show} - S{Season}E{Episode} - {Title}"
-                : defaultPattern;
+                : settings.RenameFormatPattern;
 
-            // Default all formatting options to true on first run
-            bool isFirstRun = string.IsNullOrEmpty(Settings.Default.RenameFormatPattern);
-
-            itemIncludeShow.Checked = isFirstRun ? true : Settings.Default.RenameIncludeShow;
-            itemPadNumbers.Checked = isFirstRun ? true : Settings.Default.RenamePadNumbers;
-            itemReplaceWithSpaces.Checked = isFirstRun ? true : Settings.Default.RenameReplaceWithSpaces;
-            itemReplaceDots.Checked = isFirstRun ? true : Settings.Default.RenameReplaceDots;
-            itemRemoveSpecial.Checked = isFirstRun ? true : Settings.Default.RenameRemoveSpecial;
+            itemIncludeShow.Checked = settings.RenameIncludeShow;
+            itemPadNumbers.Checked = settings.RenamePadNumbers;
+            itemReplaceWithSpaces.Checked = settings.RenameReplaceWithSpaces;
+            itemReplaceDots.Checked = settings.RenameReplaceDots;
+            itemRemoveSpecial.Checked = settings.RenameRemoveSpecial;
 
             UpdatePreview();
         }
 
         private void btnSave_Click(object sender, EventArgs e)
         {
-            Settings.Default.RenameFormatPattern = txtCustomFormat.Text;
-            Settings.Default.RenameIncludeShow = itemIncludeShow.Checked;
-            Settings.Default.RenamePadNumbers = itemPadNumbers.Checked;
-            Settings.Default.RenameReplaceWithSpaces = itemReplaceWithSpaces.Checked;
-            Settings.Default.RenameReplaceDots = itemReplaceDots.Checked;
-            Settings.Default.RenameRemoveSpecial = itemRemoveSpecial.Checked;
+            var settings = Media_Status.AppConfig.Load();
 
-            Settings.Default.Save(); // Save settings persistently
+            settings.RenameFormatPattern = txtCustomFormat.Text;
+            settings.RenameIncludeShow = itemIncludeShow.Checked;
+            settings.RenamePadNumbers = itemPadNumbers.Checked;
+            settings.RenameReplaceWithSpaces = itemReplaceWithSpaces.Checked;
+            settings.RenameReplaceDots = itemReplaceDots.Checked;
+            settings.RenameRemoveSpecial = itemRemoveSpecial.Checked;
+
+            Media_Status.AppConfig.Save(settings); // Persists cleanly to local C: drive JSON
         }
     }
 }

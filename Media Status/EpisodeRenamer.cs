@@ -253,16 +253,18 @@ public static class EpisodeRenamer
             }
 
             // =========================================================================
-            // TV SHOWS RENAME MODE
+            // TV SHOWS RENAME MODE (Loads from Local AppConfig JSON)
             // =========================================================================
-            string rawPattern = Media_Status.Properties.Settings.Default.RenameFormatPattern;
+            var localSettings = AppConfig.Load();
+
+            string rawPattern = localSettings.RenameFormatPattern;
             string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
 
-            bool includeShow = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameIncludeShow, true);
-            bool padNumbers = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenamePadNumbers, true);
-            bool replaceWithSpaces = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameReplaceWithSpaces, true);
-            bool replaceDots = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameReplaceDots, true);
-            bool removeSpecial = GetSettingSafe(() => Media_Status.Properties.Settings.Default.RenameRemoveSpecial, true);
+            bool includeShow = localSettings.RenameIncludeShow;
+            bool padNumbers = localSettings.RenamePadNumbers;
+            bool replaceWithSpaces = localSettings.RenameReplaceWithSpaces;
+            bool replaceDots = localSettings.RenameReplaceDots;
+            bool removeSpecial = localSettings.RenameRemoveSpecial;
 
             string processedShowName = targetName.Replace(".", " ");
             string cleanShowNameForApi = Regex.Replace(processedShowName, commonJunkRegex, "", RegexOptions.IgnoreCase);

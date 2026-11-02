@@ -80,6 +80,7 @@ namespace MediaControlApp.Forms
             btnStop = new Button();
             flowLayoutPanel1 = new FlowLayoutPanel();
             btnoptions = new Button();
+            btnRestoreBackup = new Button();
             BtnFavourite = new Button();
             btnRefresh = new Button();
             btnOrganiz = new Button();
@@ -414,6 +415,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.AutoSize = true;
             flowLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             flowLayoutPanel1.Controls.Add(btnoptions);
+            flowLayoutPanel1.Controls.Add(btnRestoreBackup);
             flowLayoutPanel1.Controls.Add(BtnFavourite);
             flowLayoutPanel1.Controls.Add(btnRefresh);
             flowLayoutPanel1.Controls.Add(btnOrganiz);
@@ -438,11 +440,22 @@ namespace MediaControlApp.Forms
             btnoptions.Text = "Options";
             btnoptions.Click += btnoptions_Click;
             // 
+            // btnRestoreBackup
+            // 
+            btnRestoreBackup.AutoSize = true;
+            btnRestoreBackup.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            btnRestoreBackup.Location = new Point(70, 3);
+            btnRestoreBackup.Name = "btnRestoreBackup";
+            btnRestoreBackup.Size = new Size(108, 25);
+            btnRestoreBackup.TabIndex = 7;
+            btnRestoreBackup.Text = "Restore Backup";
+            btnRestoreBackup.Click += btnRestoreBackup_Click;
+            // 
             // BtnFavourite
             // 
             BtnFavourite.AutoSize = true;
             BtnFavourite.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnFavourite.Location = new Point(70, 3);
+            BtnFavourite.Location = new Point(184, 3);
             BtnFavourite.Name = "BtnFavourite";
             BtnFavourite.Size = new Size(69, 25);
             BtnFavourite.TabIndex = 1;
@@ -453,7 +466,7 @@ namespace MediaControlApp.Forms
             // 
             btnRefresh.AutoSize = true;
             btnRefresh.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnRefresh.Location = new Point(145, 3);
+            btnRefresh.Location = new Point(259, 3);
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(62, 25);
             btnRefresh.TabIndex = 2;
@@ -464,7 +477,7 @@ namespace MediaControlApp.Forms
             // 
             btnOrganiz.AutoSize = true;
             btnOrganiz.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btnOrganiz.Location = new Point(213, 3);
+            btnOrganiz.Location = new Point(327, 3);
             btnOrganiz.Name = "btnOrganiz";
             btnOrganiz.Size = new Size(97, 25);
             btnOrganiz.TabIndex = 3;
@@ -475,7 +488,7 @@ namespace MediaControlApp.Forms
             // 
             lblStatus.AutoSize = true;
             flowLayoutPanel1.SetFlowBreak(lblStatus, true);
-            lblStatus.Location = new Point(316, 8);
+            lblStatus.Location = new Point(430, 8);
             lblStatus.Margin = new Padding(3, 8, 3, 0);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(19, 15);
@@ -685,5 +698,6 @@ namespace MediaControlApp.Forms
         private Button BtnCheckTVMAZE;
         private GroupBox gb_action_setting1;
         private GroupBox gb_action_setting2;
+        private Button btnRestoreBackup;
     }
 }

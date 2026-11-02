@@ -184,6 +184,16 @@ namespace Media_Status
         {
             var dict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
 
+            // Helper to check if an item carries active user data that must never be lost
+            bool HasUserData(MediaItem item)
+            {
+                if (item == null) return false;
+                bool watched = item.WatchedByUser != null && item.WatchedByUser.Values.Any(v => v);
+                bool fav = item.FavouriteByUser != null && item.FavouriteByUser.Values.Any(v => v);
+                bool pos = item.SavedPositionByUser != null && item.SavedPositionByUser.Values.Any(p => p > 0);
+                return watched || fav || pos;
+            }
+
             foreach (var item in primary)
             {
                 if (string.IsNullOrEmpty(item.FilePath)) continue;
@@ -206,22 +216,31 @@ namespace Media_Status
                     sec.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                     sec.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
+                    // 1. Watched state priority (Logical OR: once watched, always watched)
                     foreach (var kvp in sec.WatchedByUser)
                     {
                         bool priWatched = pri.WatchedByUser.TryGetValue(kvp.Key, out var pw) && pw;
                         pri.WatchedByUser[kvp.Key] = priWatched || kvp.Value;
                     }
 
+                    // 2. Favorite state priority (Logical OR: once favorited, keep it)
                     foreach (var kvp in sec.FavouriteByUser)
                     {
                         bool priFav = pri.FavouriteByUser.TryGetValue(kvp.Key, out var pf) && pf;
                         pri.FavouriteByUser[kvp.Key] = priFav || kvp.Value;
                     }
 
+                    // 3. Playback position priority (Always keep the furthest/highest VLC timestamp)
                     foreach (var kvp in sec.SavedPositionByUser)
                     {
                         double priPos = pri.SavedPositionByUser.TryGetValue(kvp.Key, out var pp) ? pp : 0;
                         pri.SavedPositionByUser[kvp.Key] = Math.Max(priPos, kvp.Value);
+                    }
+
+                    // If the incoming secondary item has user data but primary didn't, ensure it takes precedence
+                    if (HasUserData(sec) && !HasUserData(pri))
+                    {
+                        dict[fileName] = sec;
                     }
                 }
                 else

@@ -23,6 +23,15 @@ namespace Media_Status
 
         public int SplitMainDistance { get; set; } = 354;
         public int SplitContainer1Distance { get; set; } = 207;
+
+
+        // Auto-Renamer Local Settings
+        public string RenameFormatPattern { get; set; } = "{Show} - S{Season}E{Episode} - {Title}";
+        public bool RenameIncludeShow { get; set; } = true;
+        public bool RenamePadNumbers { get; set; } = true;
+        public bool RenameReplaceWithSpaces { get; set; } = true;
+        public bool RenameReplaceDots { get; set; } = true;
+        public bool RenameRemoveSpecial { get; set; } = true;
     }
 
     public static class AppConfig
