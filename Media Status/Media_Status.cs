@@ -431,8 +431,9 @@ namespace MediaControlApp.Forms
             {
                 int clickedIndex = info.Item.Index;
 
-                // Check if there are episodes following this one in the current list
-                bool hasNextEpisodes = clickedIndex < listEpisodes.Items.Count - 1;
+                // Bypass auto-play prompt if the item is a film
+                bool isFilm = IsFilmItem(clickedEpisode);
+                bool hasNextEpisodes = !isFilm && (clickedIndex < listEpisodes.Items.Count - 1);
 
                 List<MediaItem> playbackQueue = new();
 
@@ -473,7 +474,7 @@ namespace MediaControlApp.Forms
                 }
                 else
                 {
-                    // Last episode in season: play single item without prompting
+                    // Film or last episode in season: play single item without prompting
                     _isPlaying = true;
                     playbackQueue = new List<MediaItem> { clickedEpisode };
                 }
@@ -646,22 +647,34 @@ namespace MediaControlApp.Forms
                 var filmItems = itemsToDisplay.Where(IsFilmItem).ToList();
                 var tvItems = itemsToDisplay.Except(filmItems).ToList();
 
-                // 3. Create "Continue" node at Index 0 if any show has progress, markup data, or an unfinished first episode
+                // 3. Create "Continue" node at Index 0 if any show or film has progress, markup data, or an unfinished state
                 TreeNode topContinueNode = null;
-                var hasContinueItems = tvItems
-                    .GroupBy(i => i.CachedSeriesName)
-                    .Any(g =>
+
+                // Helper to check if a TV show or film has unfinished progress
+                bool HasProgress(List<MediaItem> list)
+                {
+                    bool hasProgressOrMarkup = list.Any(ep => ep.IsWatched(AppConfig.CurrentUser) || ep.GetSavedPosition(AppConfig.CurrentUser) > 0);
+                    bool needsFinishing = list
+                        .FirstOrDefault(ep => ep.CachedSeason == 1 && ep.CachedEpisode == 1) is MediaItem firstEp &&
+                        firstEp.GetSavedPosition(AppConfig.CurrentUser) > 0 &&
+                        !firstEp.IsWatched(AppConfig.CurrentUser);
+
+                    return (hasProgressOrMarkup || needsFinishing) && !list.All(ep => ep.IsWatched(AppConfig.CurrentUser));
+                }
+
+                // Check TV shows for continue state
+                var tvShowGroups = tvItems.GroupBy(i => i.CachedSeriesName);
+                var filmGroups = filmItems.GroupBy(f => {
+                    string name = f.CachedSeriesName;
+                    if (string.IsNullOrWhiteSpace(name) || name.Equals("Films", StringComparison.OrdinalIgnoreCase) || name.Equals("Film", StringComparison.OrdinalIgnoreCase))
                     {
-                        var showList = g.ToList();
-                        bool hasProgressOrMarkup = showList.Any(ep => ep.IsWatched(AppConfig.CurrentUser) || ep.GetSavedPosition(AppConfig.CurrentUser) > 0);
+                        return Path.GetFileNameWithoutExtension(f.FilePath);
+                    }
+                    return name;
+                });
 
-                        bool firstEpNeedsFinishing = showList
-                            .FirstOrDefault(ep => ep.CachedSeason == 1 && ep.CachedEpisode == 1) is MediaItem firstEp &&
-                            firstEp.GetSavedPosition(AppConfig.CurrentUser) > 0 &&
-                            !firstEp.IsWatched(AppConfig.CurrentUser);
-
-                        return (hasProgressOrMarkup || firstEpNeedsFinishing) && !showList.All(ep => ep.IsWatched(AppConfig.CurrentUser));
-                    });
+                bool hasContinueItems = tvShowGroups.Any(g => HasProgress(g.ToList())) ||
+                                        filmGroups.Any(g => HasProgress(g.ToList()));
 
                 if (hasContinueItems)
                 {
@@ -733,7 +746,7 @@ namespace MediaControlApp.Forms
                 }
 
                 // =========================================================================
-                // SECTION 4: Process Films (Grouped by Release Year)
+                // SECTION 4: Process Films (Grouped by Release Year, Favorites & Continue)
                 // =========================================================================
                 if (filmItems.Any())
                 {
@@ -743,24 +756,39 @@ namespace MediaControlApp.Forms
                     int filmsIndex = treeShows.Nodes.Count;
                     treeShows.Nodes.Insert(filmsIndex, filmsNode);
 
-                    // Group films by Release Year
-                    var filmsByYear = filmItems
-                        .GroupBy(f =>
-                        {
-                            string name = f.CachedSeriesName;
-                            if (string.IsNullOrWhiteSpace(name) ||
-                                name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
-                                name.Equals("Film", StringComparison.OrdinalIgnoreCase))
-                            {
-                                name = Path.GetFileNameWithoutExtension(f.FilePath);
-                            }
+                    // 1. Separate out favorited films for the dedicated Favorites sub-folder
+                    var favoriteFilms = filmItems.Where(f => f.FavouriteByUser.GetValueOrDefault(AppConfig.CurrentUser)).ToList();
 
-                            var match = System.Text.RegularExpressions.Regex.Match(name, @"\b(19\d{2}|20\d{2})\b");
-                            return match.Success ? match.Value : "Other";
-                        })
+                    if (favoriteFilms.Any())
+                    {
+                        TreeNode filmFavoritesNode = new TreeNode("★ Favorites");
+                        filmsNode.Nodes.Add(filmFavoritesNode);
+
+                        var favFilmsByYear = favoriteFilms
+                            .GroupBy(f => GetFilmYearGroup(f))
+                            .OrderByDescending(g => g.Key);
+
+                        foreach (var favYearGroup in favFilmsByYear)
+                        {
+                            string yearLabel = favYearGroup.Key;
+                            TreeNode yearNode = filmFavoritesNode.Nodes.Add(yearLabel);
+
+                            foreach (var favFilmGroup in favYearGroup.GroupBy(f => GetFilmTitle(f)).OrderBy(g => g.Key))
+                            {
+                                var groupList = favFilmGroup.ToList();
+                                string filmTitle = favFilmGroup.Key;
+
+                                var filmNode = yearNode.Nodes.Add("★ " + filmTitle);
+                                filmNode.Tag = groupList;
+                            }
+                        }
+                    }
+
+                    // 2. Group films by Release Year
+                    var filmsByYear = filmItems
+                        .GroupBy(f => GetFilmYearGroup(f))
                         .OrderByDescending(g => g.Key);
 
-                    // Track watched films and year groups for the Watched section
                     TreeNode watchedFilmsNode = null;
 
                     foreach (var yearGroup in filmsByYear)
@@ -768,23 +796,14 @@ namespace MediaControlApp.Forms
                         string yearLabel = yearGroup.Key;
                         TreeNode yearNode = filmsNode.Nodes.Add(yearLabel);
 
-                        var filmGroups = yearGroup
-                            .GroupBy(f =>
-                            {
-                                string name = f.CachedSeriesName;
-                                if (string.IsNullOrWhiteSpace(name) ||
-                                    name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
-                                    name.Equals("Film", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    return Path.GetFileNameWithoutExtension(f.FilePath);
-                                }
-                                return name;
-                            })
+                        // Renamed to mainFilmGroups to avoid any CS0136 conflict
+                        var mainFilmGroups = yearGroup
+                            .GroupBy(f => GetFilmTitle(f))
                             .OrderBy(g => g.Key);
 
                         TreeNode watchedYearNode = null;
 
-                        foreach (var filmGroup in filmGroups)
+                        foreach (var filmGroup in mainFilmGroups)
                         {
                             var groupList = filmGroup.ToList();
                             bool isFilmWatched = groupList.All(f => f.IsWatched(AppConfig.CurrentUser));
@@ -798,10 +817,10 @@ namespace MediaControlApp.Forms
 
                             bool isFav = groupList.Any(f => f.FavouriteByUser.GetValueOrDefault(AppConfig.CurrentUser));
                             string nodeText = isFav ? "★ " + filmTitle : filmTitle;
+                            bool hasFilmProgress = groupList.Any(f => f.GetSavedPosition(AppConfig.CurrentUser) > 0);
 
                             if (isFilmWatched)
                             {
-                                // Ensure topWatchedNode and Watched -> Films exist ONLY when we actually have a watched film
                                 if (topWatchedNode == null)
                                 {
                                     topWatchedNode = new TreeNode("Watched");
@@ -825,6 +844,14 @@ namespace MediaControlApp.Forms
                                 if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
                                     nodeToSelect = watchedFilmNode;
                             }
+                            else if (hasFilmProgress && topContinueNode != null)
+                            {
+                                // Route partially watched films to Continue
+                                var continueFilmNode = topContinueNode.Nodes.Add(nodeText);
+                                continueFilmNode.Tag = groupList;
+                                if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
+                                    nodeToSelect = continueFilmNode;
+                            }
                             else
                             {
                                 var filmNode = yearNode.Nodes.Add(nodeText);
@@ -834,7 +861,6 @@ namespace MediaControlApp.Forms
                             }
                         }
 
-                        // Expand year node if previously expanded or filtering
                         if (expandedShows.Contains(yearLabel) || !string.IsNullOrWhiteSpace(cleanFilter))
                         {
                             yearNode.Expand();
@@ -977,6 +1003,29 @@ namespace MediaControlApp.Forms
                 UpdateResumeButtonVisibility();
             }
         }
+
+
+
+        private string GetFilmTitle(MediaItem f)
+        {
+            string name = f.CachedSeriesName;
+            if (string.IsNullOrWhiteSpace(name) ||
+                name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("Film", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFileNameWithoutExtension(f.FilePath);
+            }
+            return name;
+        }
+
+        private string GetFilmYearGroup(MediaItem f)
+        {
+            string name = GetFilmTitle(f);
+            var match = System.Text.RegularExpressions.Regex.Match(name, @"\b(19\d{2}|20\d{2})\b");
+            return match.Success ? match.Value : "Other";
+        }
+
+
 
 
         private void TreeShows_AfterSelect(object sender, TreeViewEventArgs e)
@@ -1924,15 +1973,16 @@ namespace MediaControlApp.Forms
                                 localItem.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                                 localItem.SavedPositionByUser ??= new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
-                                // Strictly additive watched protection (if true anywhere, keep true)
+                                // Strictly additive watched protection (watched status is permanent once set)
                                 bool masterWatched = existingMasterItem.WatchedByUser.TryGetValue(currentUser, out var mw) && mw;
                                 bool localWatched = localItem.WatchedByUser.TryGetValue(currentUser, out var lw) && lw;
                                 existingMasterItem.WatchedByUser[currentUser] = masterWatched || localWatched;
 
-                                // Preserve favorites
-                                bool masterFav = existingMasterItem.FavouriteByUser.TryGetValue(currentUser, out var mf) && mf;
-                                bool localFav = localItem.FavouriteByUser.TryGetValue(currentUser, out var lf) && lf;
-                                existingMasterItem.FavouriteByUser[currentUser] = masterFav || localFav;
+                                // UPDATED: Allow local favorite state to take priority so toggling off (removing) works properly
+                                if (localItem.FavouriteByUser.TryGetValue(currentUser, out var localFavBool))
+                                {
+                                    existingMasterItem.FavouriteByUser[currentUser] = localFavBool;
+                                }
 
                                 // Preserve furthest playback position
                                 double masterPos = existingMasterItem.SavedPositionByUser.TryGetValue(currentUser, out var mp) ? mp : 0;
@@ -2478,7 +2528,9 @@ namespace MediaControlApp.Forms
                 if (diskMaster != null && diskMaster.Count > 0)
                 {
                     var baselineDict = new Dictionary<string, MediaItem>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var item in masterItems.Concat(diskMaster))
+
+                    // Put diskMaster first, then masterItems so in-memory changes take precedence
+                    foreach (var item in diskMaster.Concat(masterItems))
                     {
                         if (!string.IsNullOrEmpty(item.FilePath))
                         {
@@ -3017,96 +3069,121 @@ namespace MediaControlApp.Forms
 
 
 
-        private async void BtnFavourite_Click(object sender, EventArgs e)
+      private async void BtnFavourite_Click(object sender, EventArgs e)
+{
+    if (_isFavouriting) return;
+
+    List<MediaItem> itemsToToggle = new();
+    bool isEpisodeSelection = false;
+
+    // 1. Cache the currently selected node's text so we can re-select it after the tree rebuilds
+    string previouslySelectedNodeText = treeShows.SelectedNode?.Text;
+
+    bool isFromTreeContextMenu = sender is ToolStripMenuItem menuItem && menuItem.Owner == treeShows.ContextMenuStrip;
+
+    if (!isFromTreeContextMenu && listEpisodes.SelectedItems.Count > 0)
+    {
+        isEpisodeSelection = true;
+        foreach (ListViewItem li in listEpisodes.SelectedItems)
         {
-            if (_isFavouriting) return;
+            if (li.Tag is MediaItem ep) itemsToToggle.Add(ep);
+        }
+    }
+    else if (treeShows.SelectedNode != null)
+    {
+        itemsToToggle = GetItemsFromNode(treeShows.SelectedNode);
+    }
 
-            List<MediaItem> itemsToToggle = new();
-            bool isEpisodeSelection = false;
+    if (itemsToToggle.Count == 0) return;
 
-            bool isFromTreeContextMenu = sender is ToolStripMenuItem menuItem && menuItem.Owner == treeShows.ContextMenuStrip;
+    _isFavouriting = true;
 
-            if (!isFromTreeContextMenu && listEpisodes.SelectedItems.Count > 0)
+    string originalText = BtnFavourite.Text;
+    bool isDarkMode = BtnFavourite.BackColor.GetBrightness() < 0.5f;
+
+    this.Cursor = Cursors.WaitCursor;
+    BtnFavourite.Text = "Updating...";
+    BtnFavourite.ForeColor = isDarkMode ? Color.LightCyan : Color.DarkBlue;
+
+    try
+    {
+        foreach (var ep in itemsToToggle)
+        {
+            ep.FavouriteByUser ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        bool anyAreFavs = itemsToToggle.Any(i =>
+            i.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool isFav) && isFav);
+
+        bool newFavState = !anyAreFavs;
+
+        foreach (var ep in itemsToToggle)
+        {
+            ep.FavouriteByUser[AppConfig.CurrentUser] = newFavState;
+        }
+
+        // 2. INSTANT LOCAL SAVE & AWAITED NAS MERGE
+        MediaCache.SaveLocal(items);
+        await Task.Run(() => SaveAndMergeState());
+
+        // 3. Rebuild the tree UI
+        BuildShowTree();
+
+        // 4. Restore the tree node selection using the cached text
+        if (!string.IsNullOrEmpty(previouslySelectedNodeText))
+        {
+            foreach (TreeNode node in treeShows.Nodes)
             {
-                isEpisodeSelection = true;
-                foreach (ListViewItem li in listEpisodes.SelectedItems)
+                if (node.Text.Equals(previouslySelectedNodeText, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (li.Tag is MediaItem ep) itemsToToggle.Add(ep);
+                    treeShows.SelectedNode = node;
+                    break;
                 }
-            }
-            else if (treeShows.SelectedNode != null)
-            {
-                itemsToToggle = GetItemsFromNode(treeShows.SelectedNode);
-            }
-
-            if (itemsToToggle.Count == 0) return;
-
-            _isFavouriting = true;
-
-            string originalText = BtnFavourite.Text;
-
-            // Active accent color (Cyan for Dark Mode, Dark Blue for Light Mode)
-            bool isDarkMode = BtnFavourite.BackColor.GetBrightness() < 0.5f;
-
-            this.Cursor = Cursors.WaitCursor;
-            BtnFavourite.Text = "Updating...";
-            BtnFavourite.ForeColor = isDarkMode ? Color.LightCyan : Color.DarkBlue;
-
-            try
-            {
-                foreach (var ep in itemsToToggle)
+                foreach (TreeNode child in node.Nodes)
                 {
-                    ep.FavouriteByUser ??= new Dictionary<string, bool>();
-                }
-
-                bool hasAnyFav = itemsToToggle.Any(i =>
-                    i.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool isFav) && isFav);
-
-                bool newFavState = !hasAnyFav;
-
-                foreach (var ep in itemsToToggle)
-                {
-                    ep.FavouriteByUser[AppConfig.CurrentUser] = newFavState;
-                }
-
-                await Task.Run(() => SaveAndMergeState());
-
-                BuildShowTree();
-
-                if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
-                {
-                    currentEpisodes = activeSeasonItems;
-                    LoadEpisodes(currentEpisodes);
-                }
-                else if (isEpisodeSelection)
-                {
-                    LoadEpisodes(currentEpisodes);
-                }
-
-                if (isEpisodeSelection)
-                {
-                    foreach (ListViewItem li in listEpisodes.Items)
+                    if (child.Text.Equals(previouslySelectedNodeText, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (li.Tag is MediaItem ep && itemsToToggle.Contains(ep))
-                        {
-                            li.Selected = true;
-                            li.Focused = true;
-                        }
+                        treeShows.SelectedNode = child;
+                        break;
                     }
                 }
             }
-            finally
+        }
+
+        if (treeShows.SelectedNode?.Tag is List<MediaItem> activeSeasonItems)
+        {
+            currentEpisodes = activeSeasonItems;
+            LoadEpisodes(currentEpisodes);
+        }
+        else if (isEpisodeSelection)
+        {
+            LoadEpisodes(currentEpisodes);
+        }
+
+        if (isEpisodeSelection)
+        {
+            foreach (ListViewItem li in listEpisodes.Items)
             {
-                this.Cursor = Cursors.Default;
-                BtnFavourite.Text = originalText;
-
-                // Restore readable text color based on theme when finished
-                isDarkMode = BtnFavourite.BackColor.GetBrightness() < 0.5f;
-                BtnFavourite.ForeColor = isDarkMode ? Color.White : Color.Black;
-
-                _isFavouriting = false;
+                if (li.Tag is MediaItem ep && itemsToToggle.Contains(ep))
+                {
+                    li.Selected = true;
+                    li.Focused = true;
+                }
             }
         }
+    }
+    finally
+    {
+        this.Cursor = Cursors.Default;
+        BtnFavourite.Text = originalText;
+        isDarkMode = BtnFavourite.BackColor.GetBrightness() < 0.5f;
+        BtnFavourite.ForeColor = isDarkMode ? Color.White : Color.Black;
+        _isFavouriting = false;
+    }
+}
+
+
+
 
         private async void btnDelete_Click(object sender, EventArgs e)
         {
@@ -3418,7 +3495,11 @@ namespace MediaControlApp.Forms
 
             List<MediaItem> playbackQueue = new();
 
-            if (selectedListItems.Count == 1)
+            // Check if a single selected item is a film
+            var firstSelectedMedia = selectedListItems.FirstOrDefault()?.Tag as MediaItem;
+            bool isSingleFilm = selectedListItems.Count == 1 && firstSelectedMedia != null && IsFilmItem(firstSelectedMedia);
+
+            if (selectedListItems.Count == 1 && !isSingleFilm)
             {
                 // Ask user if they want to auto-play remaining episodes in the list
                 DialogResult autoPlayResult = DarkMessageBox.Show(
@@ -3435,7 +3516,6 @@ namespace MediaControlApp.Forms
                     _isPlaying = false;
                     return;
                 }
-
 
                 if (autoPlayResult == DialogResult.Yes)
                 {
@@ -3459,7 +3539,7 @@ namespace MediaControlApp.Forms
             }
             else
             {
-                // Multiple selection (e.g. 1 to 5): Play only the exact selected queue snapshot
+                // Multiple selection or a single film: Play directly without prompting
                 playbackQueue = selectedListItems
                     .Select(li => li.Tag as MediaItem)
                     .Where(m => m != null)

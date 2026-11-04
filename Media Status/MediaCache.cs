@@ -223,11 +223,10 @@ namespace Media_Status
                         pri.WatchedByUser[kvp.Key] = priWatched || kvp.Value;
                     }
 
-                    // 2. Favorite state priority (Logical OR: once favorited, keep it)
+                    // 2. Strict live-memory favorite priority: secondary/local state always overrides primary/disk state
                     foreach (var kvp in sec.FavouriteByUser)
                     {
-                        bool priFav = pri.FavouriteByUser.TryGetValue(kvp.Key, out var pf) && pf;
-                        pri.FavouriteByUser[kvp.Key] = priFav || kvp.Value;
+                        pri.FavouriteByUser[kvp.Key] = kvp.Value;
                     }
 
                     // 3. Playback position priority (Always keep the furthest/highest VLC timestamp)
