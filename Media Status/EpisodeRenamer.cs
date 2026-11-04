@@ -1,5 +1,6 @@
 ﻿using Media_Status;
 using MediaControlApp.Models;
+using MediaControlApp.Forms;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -145,184 +146,122 @@ public static class EpisodeRenamer
             return;
         }
 
-        var confirmResult = DarkMessageBox.Show(parentForm, $"Are you sure you want to auto-rename {itemsToRename.Count} item(s) for '{(isFilmSelection ? "Films" : targetName)}'?", "Confirm Auto-Rename", MessageBoxButtons.YesNo, darkMode);
-        if (confirmResult != DialogResult.Yes) return;
-
         parentForm.Cursor = Cursors.WaitCursor;
 
         try
         {
             string commonJunkRegex = @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|DVDRip|BDRip|BRRip|BluRay|HD|x264|x265|HEVC|AVC|Xvid|DivX|10bit|8bit|HDR|HDR10|Atmos|TrueHD|DDP?|DD\+|AC3|AAC|MP3|DTS|CH|\d+CH|PROPER|REPACK|INTERNAL|EXTENDED|UNRATED|REMASTERED|PSA|FENIX|EZTV|AFG|DSNP|NF|AMZN|HULU|ATVP|MAX|PCOK|CRITERION|TIFY)\b";
 
+            var previewItems = new List<AutoRenamePreviewItem>();
+
             // =========================================================================
-            // FILMS RENAME MODE
+            // FILMS RENAME PREVIEW
             // =========================================================================
             if (isFilmSelection)
             {
-                int filmRenamedCount = 0;
-                bool filmReplacedHistory = false;
-
                 foreach (var item in itemsToRename)
                 {
-                    try
+                    string oldFullPath = buildFullPath(item.FilePath);
+                    if (string.IsNullOrWhiteSpace(oldFullPath) || !File.Exists(oldFullPath)) continue;
+
+                    string fileNameOnly = Path.GetFileNameWithoutExtension(oldFullPath);
+
+                    string cleaned = fileNameOnly.Replace(".", " ").Replace("_", " ");
+                    cleaned = Regex.Replace(cleaned, @"\[.*?\]", string.Empty);
+                    cleaned = Regex.Replace(cleaned, @"\(.*?\)", string.Empty);
+                    cleaned = Regex.Replace(cleaned, commonJunkRegex, string.Empty, RegexOptions.IgnoreCase);
+                    cleaned = Regex.Replace(cleaned, @"[\.\-_]+", " ");
+                    cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
+
+                    if (string.IsNullOrWhiteSpace(cleaned)) cleaned = fileNameOnly;
+
+                    string directory = Path.GetDirectoryName(oldFullPath);
+                    string ext = Path.GetExtension(oldFullPath);
+
+                    string newFileName = cleaned + ext;
+                    string newFullPath = Path.Combine(directory, newFileName);
+
+                    if (!oldFullPath.Equals(newFullPath, StringComparison.OrdinalIgnoreCase))
                     {
-                        string oldFullPath = buildFullPath(item.FilePath);
-                        if (string.IsNullOrWhiteSpace(oldFullPath) || !File.Exists(oldFullPath)) continue;
-
-                        string fileNameOnly = Path.GetFileNameWithoutExtension(oldFullPath);
-
-                        string cleaned = fileNameOnly.Replace(".", " ").Replace("_", " ");
-                        cleaned = Regex.Replace(cleaned, @"\[.*?\]", string.Empty);
-                        cleaned = Regex.Replace(cleaned, @"\(.*?\)", string.Empty);
-                        cleaned = Regex.Replace(cleaned, commonJunkRegex, string.Empty, RegexOptions.IgnoreCase);
-                        cleaned = Regex.Replace(cleaned, @"[\.\-_]+", " ");
-                        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
-
-                        if (string.IsNullOrWhiteSpace(cleaned)) cleaned = fileNameOnly;
-
-                        string directory = Path.GetDirectoryName(oldFullPath);
-                        string ext = Path.GetExtension(oldFullPath);
-
-                        string newFileName = cleaned + ext;
-                        string newFullPath = Path.Combine(directory, newFileName);
-
-                        if (oldFullPath.Equals(newFullPath, StringComparison.OrdinalIgnoreCase)) continue;
-
-                        if (File.Exists(newFullPath))
+                        previewItems.Add(new AutoRenamePreviewItem
                         {
-                            string tempPath = oldFullPath + ".tmp_" + Guid.NewGuid().ToString("N");
-                            File.Move(oldFullPath, tempPath);
-                            File.Move(tempPath, newFullPath);
-                        }
-                        else
-                        {
-                            File.Move(oldFullPath, newFullPath);
-                        }
-
-                        if (!filmReplacedHistory)
-                        {
-                            _lastRenameHistory.Clear();
-                            filmReplacedHistory = true;
-                        }
-
-                        _lastRenameHistory[newFullPath] = oldFullPath;
-
-                        transferState(item, oldFullPath, newFullPath);
-                        item.FilePath = newFullPath;
-                        item.CacheParsed();
-                        filmRenamedCount++;
-                    }
-                    catch (Exception innerEx)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[FilmRenameError] {innerEx.Message}");
+                            MediaItem = item,
+                            OriginalName = Path.GetFileName(oldFullPath),
+                            NewName = newFileName,
+                            OriginalFullPath = oldFullPath,
+                            NewFullPath = newFullPath
+                        });
                     }
                 }
-
-                if (filmRenamedCount > 0)
-                {
-                    foreach (ListViewItem lvi in listEpisodes.Items)
-                    {
-                        if (lvi.Tag is MediaItem m) m.CacheParsed();
-                    }
-
-                    await saveAndMergeState();
-                    refreshAll();
-                    refreshNodeSelection();
-
-                    // Now films will also prompt you to Keep or Revert!
-                    var keepOrRevert = DarkMessageBox.Show(parentForm,
-                        $"Successfully renamed {filmRenamedCount} film(s)!\n\nDo you want to **Keep** these changes, or **Revert** them back?",
-                        "Confirm Renaming Results", MessageBoxButtons.YesNo, darkMode);
-
-                    if (keepOrRevert == DialogResult.No)
-                    {
-                        await RevertLastRenameAsync(parentForm, listEpisodes, buildFullPath, transferState, saveAndMergeState, refreshAll, refreshNodeSelection, darkMode);
-                    }
-                    else
-                    {
-                        _lastRenameHistory.Clear();
-                        DarkMessageBox.Show(parentForm, "Changes kept successfully!", "Rename Complete", MessageBoxButtons.OK, darkMode);
-                    }
-                }
-                else
-                {
-                    DarkMessageBox.Show(parentForm, "No films needed renaming or files were already formatted correctly.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
-                }
-
-                return;
             }
-
-            // =========================================================================
-            // TV SHOWS RENAME MODE (Loads from Local AppConfig JSON)
-            // =========================================================================
-            var localSettings = AppConfig.Load();
-
-            string rawPattern = localSettings.RenameFormatPattern;
-            string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
-
-            bool includeShow = localSettings.RenameIncludeShow;
-            bool padNumbers = localSettings.RenamePadNumbers;
-            bool replaceWithSpaces = localSettings.RenameReplaceWithSpaces;
-            bool replaceDots = localSettings.RenameReplaceDots;
-            bool removeSpecial = localSettings.RenameRemoveSpecial;
-
-            string processedShowName = targetName.Replace(".", " ");
-            string cleanShowNameForApi = Regex.Replace(processedShowName, commonJunkRegex, "", RegexOptions.IgnoreCase);
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\(\d{4}\)", "").Trim();
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\b(19|20)\d{2}\b", "").Trim();
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\bS\d+E\d+\b", "").Trim();
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\b\d+x\d+\b", "").Trim();
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"[\.\-_]+", " ").Trim();
-            cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\s+", " ");
-
-            bool apiSuccess = false;
-            var episodeDict = new Dictionary<(int Season, int Episode), string>();
-
-            try
+            else
             {
-                using (HttpClient client = new HttpClient())
+                // =========================================================================
+                // TV SHOWS RENAME PREVIEW (Loads from Local AppConfig JSON & TVMaze API)
+                // =========================================================================
+                var localSettings = AppConfig.Load();
+
+                string rawPattern = localSettings.RenameFormatPattern;
+                string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
+
+                bool includeShow = localSettings.RenameIncludeShow;
+                bool padNumbers = localSettings.RenamePadNumbers;
+                bool replaceWithSpaces = localSettings.RenameReplaceWithSpaces;
+                bool replaceDots = localSettings.RenameReplaceDots;
+                bool removeSpecial = localSettings.RenameRemoveSpecial;
+
+                string processedShowName = targetName.Replace(".", " ");
+                string cleanShowNameForApi = Regex.Replace(processedShowName, commonJunkRegex, "", RegexOptions.IgnoreCase);
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\(\d{4}\)", "").Trim();
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\b(19|20)\d{2}\b", "").Trim();
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\bS\d+E\d+\b", "").Trim();
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"(?i)\b\d+x\d+\b", "").Trim();
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"[\.\-_]+", " ").Trim();
+                cleanShowNameForApi = Regex.Replace(cleanShowNameForApi, @"\s+", " ");
+
+                bool apiSuccess = false;
+                var episodeDict = new Dictionary<(int Season, int Episode), string>();
+
+                try
                 {
-                    client.Timeout = TimeSpan.FromSeconds(5);
-                    client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
-
-                    string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(cleanShowNameForApi)}&embed=episodes";
-                    HttpResponseMessage response = await client.GetAsync(searchUrl);
-
-                    if (response.IsSuccessStatusCode)
+                    using (HttpClient client = new HttpClient())
                     {
-                        string jsonResponse = await response.Content.ReadAsStringAsync();
-                        using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
+                        client.Timeout = TimeSpan.FromSeconds(5);
+                        client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
+
+                        string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(cleanShowNameForApi)}&embed=episodes";
+                        HttpResponseMessage response = await client.GetAsync(searchUrl);
+
+                        if (response.IsSuccessStatusCode)
                         {
-                            if (doc.RootElement.TryGetProperty("_embedded", out var embedded) &&
-                                embedded.TryGetProperty("episodes", out var episodesArray))
+                            string jsonResponse = await response.Content.ReadAsStringAsync();
+                            using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
                             {
-                                foreach (var epElem in episodesArray.EnumerateArray())
+                                if (doc.RootElement.TryGetProperty("_embedded", out var embedded) &&
+                                    embedded.TryGetProperty("episodes", out var episodesArray))
                                 {
-                                    if (epElem.TryGetProperty("season", out var sProp) && epElem.TryGetProperty("number", out var nProp))
+                                    foreach (var epElem in episodesArray.EnumerateArray())
                                     {
-                                        if (nProp.ValueKind == JsonValueKind.Number)
+                                        if (epElem.TryGetProperty("season", out var sProp) && epElem.TryGetProperty("number", out var nProp))
                                         {
-                                            int s = sProp.GetInt32();
-                                            int eNum = nProp.GetInt32();
-                                            string epName = epElem.GetProperty("name").GetString() ?? "";
-                                            episodeDict[(s, eNum)] = epName;
+                                            if (nProp.ValueKind == JsonValueKind.Number)
+                                            {
+                                                int s = sProp.GetInt32();
+                                                int eNum = nProp.GetInt32();
+                                                string epName = epElem.GetProperty("name").GetString() ?? "";
+                                                episodeDict[(s, eNum)] = epName;
+                                            }
                                         }
                                     }
+                                    apiSuccess = true;
                                 }
-                                apiSuccess = true;
                             }
                         }
                     }
                 }
-            }
-            catch { }
+                catch { }
 
-            int renamedCount = 0;
-            bool replacedUndoHistory = false;
-
-            foreach (var item in itemsToRename)
-            {
-                try
+                foreach (var item in itemsToRename)
                 {
                     string oldFullPath = buildFullPath(item.FilePath);
                     if (string.IsNullOrWhiteSpace(oldFullPath) || !File.Exists(oldFullPath)) continue;
@@ -418,66 +357,93 @@ public static class EpisodeRenamer
                     string newFileName = Regex.Replace(formattedName, @"\s+", " ").Trim() + ext;
                     string newFullPath = Path.Combine(directory, newFileName);
 
-                    if (oldFullPath.Equals(newFullPath, StringComparison.Ordinal)) continue;
-
-                    if (File.Exists(newFullPath))
+                    if (!oldFullPath.Equals(newFullPath, StringComparison.Ordinal))
                     {
-                        string tempPath = oldFullPath + ".tmp_" + Guid.NewGuid().ToString("N");
-                        File.Move(oldFullPath, tempPath);
-                        File.Move(tempPath, newFullPath);
+                        previewItems.Add(new AutoRenamePreviewItem
+                        {
+                            MediaItem = item,
+                            OriginalName = Path.GetFileName(oldFullPath),
+                            NewName = newFileName,
+                            OriginalFullPath = oldFullPath,
+                            NewFullPath = newFullPath
+                        });
                     }
-                    else
-                    {
-                        File.Move(oldFullPath, newFullPath);
-                    }
-
-                    if (!replacedUndoHistory)
-                    {
-                        _lastRenameHistory.Clear();
-                        replacedUndoHistory = true;
-                    }
-
-                    _lastRenameHistory[newFullPath] = oldFullPath;
-
-                    transferState(item, oldFullPath, newFullPath);
-                    item.FilePath = newFullPath;
-                    item.CacheParsed();
-                    renamedCount++;
-                }
-                catch (Exception innerEx)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[RenameError] {innerEx.Message}");
                 }
             }
 
-            if (renamedCount > 0)
+            parentForm.Cursor = Cursors.Default;
+
+            if (previewItems.Count == 0)
             {
-                foreach (ListViewItem lvi in listEpisodes.Items)
-                {
-                    if (lvi.Tag is MediaItem m) m.CacheParsed();
-                }
-
-                await saveAndMergeState();
-                refreshAll();
-                refreshNodeSelection();
-
-                var keepOrRevert = DarkMessageBox.Show(parentForm,
-                    $"Successfully renamed {renamedCount} file(s)!\n\nDo you want to **Keep** these changes, or **Revert** them back?",
-                    "Confirm Renaming Results", MessageBoxButtons.YesNo, darkMode);
-
-                if (keepOrRevert == DialogResult.No)
-                {
-                    await RevertLastRenameAsync(parentForm, listEpisodes, buildFullPath, transferState, saveAndMergeState, refreshAll, refreshNodeSelection, darkMode);
-                }
-                else
-                {
-                    _lastRenameHistory.Clear();
-                    DarkMessageBox.Show(parentForm, "Changes kept successfully!", "Rename Complete", MessageBoxButtons.OK, darkMode);
-                }
+                DarkMessageBox.Show(parentForm, "All items are already correctly formatted or no changes needed.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
+                return;
             }
-            else
+
+            // =========================================================================
+            // SHOW BEFORE/AFTER PREVIEW DIALOG (YES / NO)
+            // =========================================================================
+            using (var previewForm = new AutoRenamePreviewForm(previewItems, darkMode))
             {
-                DarkMessageBox.Show(parentForm, "No files needed renaming or they were already formatted correctly.", "Auto-Rename", MessageBoxButtons.OK, darkMode);
+                if (previewForm.ShowDialog(parentForm) != DialogResult.OK || previewForm.ApprovedItems.Count == 0)
+                {
+                    return; // User clicked Cancel (No)
+                }
+
+                parentForm.Cursor = Cursors.WaitCursor;
+                int renamedCount = 0;
+                bool replacedUndoHistory = false;
+
+                try
+                {
+                    await Task.Run(() =>
+                    {
+                        foreach (var preview in previewForm.ApprovedItems)
+                        {
+                            if (File.Exists(preview.OriginalFullPath))
+                            {
+                                if (File.Exists(preview.NewFullPath))
+                                {
+                                    string tempPath = preview.OriginalFullPath + ".tmp_" + Guid.NewGuid().ToString("N");
+                                    File.Move(preview.OriginalFullPath, tempPath);
+                                    File.Move(tempPath, preview.NewFullPath);
+                                }
+                                else
+                                {
+                                    File.Move(preview.OriginalFullPath, preview.NewFullPath);
+                                }
+
+                                lock (_lastRenameHistory)
+                                {
+                                    if (!replacedUndoHistory)
+                                    {
+                                        _lastRenameHistory.Clear();
+                                        replacedUndoHistory = true;
+                                    }
+                                    _lastRenameHistory[preview.NewFullPath] = preview.OriginalFullPath;
+                                }
+
+                                transferState(preview.MediaItem, preview.OriginalFullPath, preview.NewFullPath);
+                                preview.MediaItem.FilePath = preview.NewFullPath;
+                                preview.MediaItem.CacheParsed();
+                                renamedCount++;
+                            }
+                        }
+                        saveAndMergeState().Wait();
+                    });
+
+                    refreshAll();
+                    refreshNodeSelection();
+
+                    DarkMessageBox.Show(parentForm, $"Successfully renamed {renamedCount} file(s)!", "Rename Complete", MessageBoxButtons.OK, darkMode);
+                }
+                catch (Exception ex)
+                {
+                    DarkMessageBox.Show(parentForm, $"Error during execution: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+                }
+                finally
+                {
+                    parentForm.Cursor = Cursors.Default;
+                }
             }
         }
         catch (Exception ex)

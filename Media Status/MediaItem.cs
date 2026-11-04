@@ -265,9 +265,9 @@ namespace MediaControlApp.Models
             // Strip standalone years like 2024, 2025, 2026 from series names
             clean = Regex.Replace(clean, @"\b(19|20)\d{2}\b", " ");
 
-            // Strip multi-season/range patterns e.g. "Season 1 and 2", "Seasons 1-3", "Season 1 & 2", "S01-S02"
-            clean = Regex.Replace(clean, @"(?i)\b(Seasons?|Series)\s*\d+([\s,&\-and]+\d+)*\b", " ");
-            clean = Regex.Replace(clean, @"(?i)\bS\d+[\s,&\-]*S?\d+\b", " ");
+            // Strip empty parentheses or brackets left behind after stripping years/tags
+            clean = Regex.Replace(clean, @"\(\s*\)", " ");
+            clean = Regex.Replace(clean, @"\[\s*\]", " ");
 
             // Replace delimiters with spaces
             clean = clean.Replace('.', ' ')

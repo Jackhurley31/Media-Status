@@ -29,6 +29,8 @@
             label1 = new Label();
             groupBox1 = new GroupBox();
             tableGeneralLayout = new TableLayoutPanel();
+            btnAutoRenameOptions = new Button();
+            btnRestoreBackup = new Button();
             label2 = new Label();
             cmbFontSize = new ComboBox();
             label3 = new Label();
@@ -109,7 +111,7 @@
             // 
             BtnDarkMode.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             BtnDarkMode.AutoSize = true;
-            BtnDarkMode.Location = new Point(3, 42);
+            BtnDarkMode.Location = new Point(3, 120);
             BtnDarkMode.Margin = new Padding(3, 3, 3, 6);
             BtnDarkMode.Name = "BtnDarkMode";
             BtnDarkMode.Size = new Size(212, 30);
@@ -173,17 +175,21 @@
             tableGeneralLayout.AutoSize = true;
             tableGeneralLayout.ColumnCount = 1;
             tableGeneralLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tableGeneralLayout.Controls.Add(label2, 0, 2);
-            tableGeneralLayout.Controls.Add(cmbFontSize, 0, 3);
-            tableGeneralLayout.Controls.Add(label3, 0, 4);
-            tableGeneralLayout.Controls.Add(cmbFontFamily, 0, 5);
-            tableGeneralLayout.Controls.Add(chkRunOnStartup, 0, 6);
-            tableGeneralLayout.Controls.Add(BtnDarkMode, 0, 1);
+            tableGeneralLayout.Controls.Add(btnAutoRenameOptions, 0, 2);
+            tableGeneralLayout.Controls.Add(btnRestoreBackup, 0, 1);
+            tableGeneralLayout.Controls.Add(label2, 0, 4);
+            tableGeneralLayout.Controls.Add(cmbFontSize, 0, 5);
+            tableGeneralLayout.Controls.Add(label3, 0, 6);
+            tableGeneralLayout.Controls.Add(cmbFontFamily, 0, 7);
+            tableGeneralLayout.Controls.Add(chkRunOnStartup, 0, 8);
+            tableGeneralLayout.Controls.Add(BtnDarkMode, 0, 3);
             tableGeneralLayout.Controls.Add(btnOpenLocalPath_Click, 0, 0);
             tableGeneralLayout.Dock = DockStyle.Fill;
             tableGeneralLayout.Location = new Point(8, 24);
             tableGeneralLayout.Name = "tableGeneralLayout";
-            tableGeneralLayout.RowCount = 7;
+            tableGeneralLayout.RowCount = 9;
+            tableGeneralLayout.RowStyles.Add(new RowStyle());
+            tableGeneralLayout.RowStyles.Add(new RowStyle());
             tableGeneralLayout.RowStyles.Add(new RowStyle());
             tableGeneralLayout.RowStyles.Add(new RowStyle());
             tableGeneralLayout.RowStyles.Add(new RowStyle());
@@ -194,11 +200,37 @@
             tableGeneralLayout.Size = new Size(218, 448);
             tableGeneralLayout.TabIndex = 0;
             // 
+            // btnAutoRenameOptions
+            // 
+            btnAutoRenameOptions.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            btnAutoRenameOptions.AutoSize = true;
+            btnAutoRenameOptions.Location = new Point(3, 81);
+            btnAutoRenameOptions.Margin = new Padding(3, 3, 3, 6);
+            btnAutoRenameOptions.Name = "btnAutoRenameOptions";
+            btnAutoRenameOptions.Size = new Size(212, 30);
+            btnAutoRenameOptions.TabIndex = 8;
+            btnAutoRenameOptions.Text = "Auto Rename options";
+            btnAutoRenameOptions.UseVisualStyleBackColor = true;
+            btnAutoRenameOptions.Click += btnAutoRenameOptions_Click;
+            // 
+            // btnRestoreBackup
+            // 
+            btnRestoreBackup.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            btnRestoreBackup.AutoSize = true;
+            btnRestoreBackup.Location = new Point(3, 42);
+            btnRestoreBackup.Margin = new Padding(3, 3, 3, 6);
+            btnRestoreBackup.Name = "btnRestoreBackup";
+            btnRestoreBackup.Size = new Size(212, 30);
+            btnRestoreBackup.TabIndex = 7;
+            btnRestoreBackup.Text = "Restore Backup";
+            btnRestoreBackup.UseVisualStyleBackColor = true;
+            btnRestoreBackup.Click += btnRestoreBackup_Click;
+            // 
             // label2
             // 
             label2.AutoSize = true;
             label2.Font = new Font("Segoe UI", 9F);
-            label2.Location = new Point(3, 84);
+            label2.Location = new Point(3, 162);
             label2.Margin = new Padding(3, 6, 3, 2);
             label2.Name = "label2";
             label2.Size = new Size(57, 15);
@@ -211,7 +243,7 @@
             cmbFontSize.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbFontSize.Font = new Font("Segoe UI", 9F);
             cmbFontSize.FormattingEnabled = true;
-            cmbFontSize.Location = new Point(3, 101);
+            cmbFontSize.Location = new Point(3, 179);
             cmbFontSize.Margin = new Padding(3, 0, 3, 10);
             cmbFontSize.Name = "cmbFontSize";
             cmbFontSize.Size = new Size(212, 23);
@@ -222,7 +254,7 @@
             // 
             label3.AutoSize = true;
             label3.Font = new Font("Segoe UI", 9F);
-            label3.Location = new Point(3, 140);
+            label3.Location = new Point(3, 218);
             label3.Margin = new Padding(3, 6, 3, 2);
             label3.Name = "label3";
             label3.Size = new Size(62, 15);
@@ -235,7 +267,7 @@
             cmbFontFamily.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbFontFamily.Font = new Font("Segoe UI", 9F);
             cmbFontFamily.FormattingEnabled = true;
-            cmbFontFamily.Location = new Point(3, 157);
+            cmbFontFamily.Location = new Point(3, 235);
             cmbFontFamily.Margin = new Padding(3, 0, 3, 10);
             cmbFontFamily.Name = "cmbFontFamily";
             cmbFontFamily.Size = new Size(212, 23);
@@ -246,7 +278,7 @@
             // 
             chkRunOnStartup.AutoSize = true;
             chkRunOnStartup.Font = new Font("Segoe UI", 9F);
-            chkRunOnStartup.Location = new Point(3, 196);
+            chkRunOnStartup.Location = new Point(3, 274);
             chkRunOnStartup.Margin = new Padding(3, 6, 3, 10);
             chkRunOnStartup.Name = "chkRunOnStartup";
             chkRunOnStartup.Size = new Size(128, 19);
@@ -414,5 +446,7 @@
         private FlowLayoutPanel flowAddExtension;
         private TableLayoutPanel tableFormLayout;
         private Button btnOpenLocalPath_Click;
+        private Button btnAutoRenameOptions;
+        private Button btnRestoreBackup;
     }
 }

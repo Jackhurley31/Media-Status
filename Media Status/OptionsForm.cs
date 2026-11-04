@@ -1,7 +1,9 @@
 ﻿using Media_Status;
+using MediaStatus;
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
 using System.Linq;
@@ -399,5 +401,86 @@ namespace MediaControlApp
                 DarkMessageBox.Show(this, $"Failed to open local path: {ex.Message}", "Error", MessageBoxButtons.OK, _darkMode);
             }
         }
+
+
+
+
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Action OnDatabaseRestored { get; set; }
+
+        private void btnRestoreBackup_Click(object sender, EventArgs e)
+        {
+            using (var form = new RestoreBackupForm(_darkMode))
+            {
+                if (form.ShowDialog(this) == DialogResult.OK && form.SelectedBackup != null)
+                {
+                    BackupFileInfo selectedBackup = form.SelectedBackup;
+
+                    var confirm = DarkMessageBox.Show(
+                        this,
+                        $"Are you sure you want to restore from backup:\n\n'{selectedBackup.FileName}'?",
+                        "Confirm Restore",
+                        MessageBoxButtons.YesNo,
+                        _darkMode
+                    );
+
+                    if (confirm == DialogResult.Yes)
+                    {
+                        this.Cursor = Cursors.WaitCursor;
+                        try
+                        {
+                            // Use MediaCache.MasterPath so it targets the correct active folder / NAS path
+                            bool success = RestoreBackupForm.RestoreBackup(
+                                selectedBackup.FilePath,
+                                MediaCache.MasterPath
+                            );
+
+                            if (success)
+                            {
+                                // Trigger callback to notify MainForm to reload and refresh UI
+                                OnDatabaseRestored?.Invoke();
+
+                                DarkMessageBox.Show(this, "Database successfully restored from backup!", "Restore Complete", MessageBoxButtons.OK, _darkMode);
+                            }
+                            else
+                            {
+                                DarkMessageBox.Show(this, "Failed to restore backup file.", "Error", MessageBoxButtons.OK, _darkMode);
+                            }
+                        }
+                        finally
+                        {
+                            this.Cursor = Cursors.Default;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void btnAutoRenameOptions_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new AutoRenameSettingsForm(_darkMode))
+            {
+                if (settingsForm.ShowDialog(this) == DialogResult.OK)
+                {
+                    var appSettings = AppConfig.Load();
+
+                    appSettings.RenameFormatPattern = settingsForm.CustomFormatPattern;
+                    appSettings.RenameIncludeShow = settingsForm.IncludeShow;
+                    appSettings.RenamePadNumbers = settingsForm.PadNumbers;
+                    appSettings.RenameReplaceWithSpaces = settingsForm.ReplaceWithSpaces;
+                    appSettings.RenameReplaceDots = settingsForm.ReplaceDots;
+                    appSettings.RenameRemoveSpecial = settingsForm.RemoveSpecial;
+
+                    AppConfig.Save(appSettings);
+                }
+            }
+        }
+        
+
+    
+
+
     }
 }

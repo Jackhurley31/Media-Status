@@ -231,6 +231,20 @@ namespace MediaControlApp.Forms
         }
 
 
+        private void ApplyTextBoxStyle(TextBox txt, Color backColor, Color foreColor, int targetHeight)
+        {
+            txt.BackColor = backColor;
+            txt.ForeColor = foreColor;
+            txt.BorderStyle = BorderStyle.FixedSingle;
+            txt.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular); // Match button font size
+
+            // Force height to match buttons
+            txt.Multiline = true;
+            txt.Height = targetHeight;
+            txt.Multiline = false;
+        }
+
+
 
 
 
@@ -967,7 +981,12 @@ namespace MediaControlApp.Forms
 
         private void TreeShows_AfterSelect(object sender, TreeViewEventArgs e)
         {
-
+            // Clear episode summary whenever a tree node (show/season) is selected
+            if (txtEpisodeSummary != null)
+            {
+                txtEpisodeSummary.Clear();
+                txtEpisodeSummary.Visible = false;
+            }
 
             if (e.Node.Tag is List<MediaItem> seasonItems)
             {
@@ -977,12 +996,10 @@ namespace MediaControlApp.Forms
                 // Auto-resize columns to fit both the column header AND the longest item text
                 foreach (ColumnHeader column in listEpisodes.Columns)
                 {
-                    column.Width = -2; // -2 automatically sizes to fit the header and contents perfectly
+                    column.Width = -2;
                 }
 
-
                 UpdateButtonStates();
-
             }
             else
             {
@@ -1075,7 +1092,7 @@ namespace MediaControlApp.Forms
 
 
 
-        private void listEpisodes_SelectedIndexChanged(object sender, EventArgs e)
+        private async void listEpisodes_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_isProcessingStop) return;
 
@@ -1083,10 +1100,239 @@ namespace MediaControlApp.Forms
             {
                 var selectedMedia = listEpisodes.SelectedItems[0].Tag as MediaItem;
                 UpdatePlayButtonText(selectedMedia);
+
+                if (txtEpisodeSummary != null && selectedMedia != null)
+                {
+                    txtEpisodeSummary.Clear();
+
+                    Color textColor = darkMode ? Color.White : Color.Black;
+                    Color accentColor = darkMode ? Color.LightSkyBlue : Color.Navy;
+                    Color mutedColor = darkMode ? Color.DarkGray : Color.DimGray;
+
+                    // Determine if the selected media item is a film
+                    bool isFilm = (!string.IsNullOrEmpty(selectedMedia.CachedCategory) && selectedMedia.CachedCategory.Contains("Film", StringComparison.OrdinalIgnoreCase)) ||
+                                  (!string.IsNullOrEmpty(selectedMedia.FilePath) && (selectedMedia.FilePath.Contains(@"\Films\", StringComparison.OrdinalIgnoreCase) || selectedMedia.FilePath.Contains(@"\Film\", StringComparison.OrdinalIgnoreCase)));
+
+                    string durationStr = selectedMedia.Duration > TimeSpan.Zero
+                        ? (selectedMedia.Duration.Hours > 0 ? selectedMedia.Duration.ToString(@"h\:mm\:ss") : selectedMedia.Duration.ToString(@"m\:ss"))
+                        : "--:--";
+
+                    string cleanTitle = selectedMedia.CachedSeriesName ?? Path.GetFileNameWithoutExtension(selectedMedia.FilePath);
+                    // Clean up release years or tags for better API matching
+                    cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\b(19|20)\d{2}\b", "");
+                    cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|bluray|web-dl|x264|x265)", "").Trim();
+
+                    if (isFilm)
+                    {
+                        // ==========================================
+                        // FILM METADATA DISPLAY (IMDb via OMDb API)
+                        // ==========================================
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+                        txtEpisodeSummary.SelectionColor = accentColor;
+                        txtEpisodeSummary.AppendText($"{cleanTitle}\n");
+
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Italic);
+                        txtEpisodeSummary.SelectionColor = mutedColor;
+                        txtEpisodeSummary.AppendText("Movie / Film Release\n\n");
+
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9f, FontStyle.Italic);
+                        txtEpisodeSummary.SelectionColor = mutedColor;
+                        txtEpisodeSummary.AppendText("Fetching details from IMDb...\n");
+                        txtEpisodeSummary.Visible = true;
+
+                        string moviePlot = null;
+                        string imdbRating = null;
+
+                        try
+                        {
+                            using (HttpClient client = new HttpClient())
+                            {
+                                client.Timeout = TimeSpan.FromSeconds(4);
+                                client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
+
+                                // Free OMDb API endpoint (using public key / open service format)
+                                string omdbUrl = $"https://www.omdbapi.com/?t={Uri.EscapeDataString(cleanTitle)}&apikey=trilogy";
+                                HttpResponseMessage response = await client.GetAsync(omdbUrl);
+
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    string jsonResponse = await response.Content.ReadAsStringAsync();
+                                    using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
+                                    {
+                                        if (doc.RootElement.TryGetProperty("Response", out var resProp) && resProp.GetString() == "True")
+                                        {
+                                            if (doc.RootElement.TryGetProperty("Plot", out var plotProp))
+                                                moviePlot = plotProp.GetString();
+
+                                            if (doc.RootElement.TryGetProperty("imdbRating", out var ratProp))
+                                                imdbRating = ratProp.GetString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+
+                        // Ensure selection hasn't changed during the async call
+                        if (listEpisodes.SelectedItems.Count == 0 || listEpisodes.SelectedItems[0].Tag != selectedMedia)
+                            return;
+
+                        txtEpisodeSummary.Clear();
+
+                        // Re-write header
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+                        txtEpisodeSummary.SelectionColor = accentColor;
+                        txtEpisodeSummary.AppendText($"{cleanTitle}\n");
+
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Italic);
+                        txtEpisodeSummary.SelectionColor = mutedColor;
+                        txtEpisodeSummary.AppendText("Movie / Film Release\n\n");
+
+                        // IMDb Star Rating
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                        txtEpisodeSummary.SelectionColor = Color.Gold;
+                        txtEpisodeSummary.AppendText("★ IMDb Rating: ");
+
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                        txtEpisodeSummary.SelectionColor = textColor;
+                        txtEpisodeSummary.AppendText(!string.IsNullOrEmpty(imdbRating) && imdbRating != "N/A" ? $"{imdbRating} / 10\n\n" : "N/A\n\n");
+
+                        // Plot Summary
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                        txtEpisodeSummary.SelectionColor = mutedColor;
+                        txtEpisodeSummary.AppendText("Plot Summary:\n");
+
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                        txtEpisodeSummary.SelectionColor = textColor;
+                        txtEpisodeSummary.AppendText(!string.IsNullOrEmpty(moviePlot) && moviePlot != "N/A" ? $"{moviePlot}\n\n" : "No summary available for this film.\n\n");
+
+                        // Footer
+                        txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                        txtEpisodeSummary.SelectionColor = mutedColor;
+                        txtEpisodeSummary.AppendText($"Duration: {durationStr}   |   File: {Path.GetFileName(selectedMedia.FilePath)}");
+
+                        txtEpisodeSummary.Visible = true;
+                        return;
+                    }
+
+                    // ==========================================
+                    // TV SHOW EPISODE DISPLAY (TVMaze API lookup)
+                    // ==========================================
+                    string showName = selectedMedia.CachedSeriesName ?? "Unknown Show";
+                    int targetSeason = selectedMedia.CachedSeason;
+                    int targetEpisode = selectedMedia.CachedEpisode;
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+                    txtEpisodeSummary.SelectionColor = accentColor;
+                    txtEpisodeSummary.AppendText($"{showName}\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                    txtEpisodeSummary.SelectionColor = textColor;
+                    txtEpisodeSummary.AppendText($"Season {targetSeason} | Episode {targetEpisode}\n\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9f, FontStyle.Italic);
+                    txtEpisodeSummary.SelectionColor = mutedColor;
+                    txtEpisodeSummary.AppendText("Fetching episode summary & rating from TVMaze...\n");
+                    txtEpisodeSummary.Visible = true;
+
+                    string episodeSummary = null;
+                    double? episodeRating = null;
+
+                    try
+                    {
+                        using (HttpClient client = new HttpClient())
+                        {
+                            client.Timeout = TimeSpan.FromSeconds(4);
+                            client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
+
+                            string searchUrl = $"https://api.tvmaze.com/singlesearch/shows?q={Uri.EscapeDataString(showName)}&embed=episodes";
+                            HttpResponseMessage response = await client.GetAsync(searchUrl);
+
+                            if (response.IsSuccessStatusCode)
+                            {
+                                string jsonResponse = await response.Content.ReadAsStringAsync();
+                                using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
+                                {
+                                    if (doc.RootElement.TryGetProperty("_embedded", out var embedded) &&
+                                        embedded.TryGetProperty("episodes", out var episodesArray))
+                                    {
+                                        foreach (var epElem in episodesArray.EnumerateArray())
+                                        {
+                                            if (epElem.TryGetProperty("season", out var sProp) && epElem.TryGetProperty("number", out var nProp))
+                                            {
+                                                if (sProp.GetInt32() == targetSeason && nProp.GetInt32() == targetEpisode)
+                                                {
+                                                    if (epElem.TryGetProperty("summary", out var sumProp) && sumProp.ValueKind == JsonValueKind.String)
+                                                    {
+                                                        episodeSummary = sumProp.GetString();
+                                                    }
+
+                                                    if (epElem.TryGetProperty("rating", out var ratObj) &&
+                                                        ratObj.TryGetProperty("average", out var avgProp) &&
+                                                        avgProp.ValueKind == JsonValueKind.Number)
+                                                    {
+                                                        episodeRating = avgProp.GetDouble();
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+
+                    if (listEpisodes.SelectedItems.Count == 0 || listEpisodes.SelectedItems[0].Tag != selectedMedia)
+                        return;
+
+                    txtEpisodeSummary.Clear();
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+                    txtEpisodeSummary.SelectionColor = accentColor;
+                    txtEpisodeSummary.AppendText($"{showName}\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                    txtEpisodeSummary.SelectionColor = textColor;
+                    txtEpisodeSummary.AppendText($"Season {targetSeason} | Episode {targetEpisode}\n\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                    txtEpisodeSummary.SelectionColor = Color.Gold;
+                    txtEpisodeSummary.AppendText("★ Rating: ");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                    txtEpisodeSummary.SelectionColor = textColor;
+                    txtEpisodeSummary.AppendText(episodeRating.HasValue ? $"{episodeRating.Value} / 10\n\n" : "N/A\n\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                    txtEpisodeSummary.SelectionColor = mutedColor;
+                    txtEpisodeSummary.AppendText("Plot Summary:\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+                    txtEpisodeSummary.SelectionColor = textColor;
+
+                    string cleanPlot = !string.IsNullOrEmpty(episodeSummary)
+                        ? System.Text.RegularExpressions.Regex.Replace(episodeSummary, "<.*?>", string.Empty)
+                        : "No summary available for this episode.";
+
+                    txtEpisodeSummary.AppendText($"{cleanPlot}\n\n");
+
+                    txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+                    txtEpisodeSummary.SelectionColor = mutedColor;
+                    txtEpisodeSummary.AppendText($"Duration: {durationStr}   |   File: {Path.GetFileName(selectedMedia.FilePath)}");
+
+                    txtEpisodeSummary.Visible = true;
+                }
             }
             else
             {
                 btnPlay.Text = "Play";
+                if (txtEpisodeSummary != null)
+                {
+                    txtEpisodeSummary.Clear();
+                    txtEpisodeSummary.Visible = false;
+                }
             }
         }
 
@@ -2060,6 +2306,7 @@ namespace MediaControlApp.Forms
             return TimeSpan.Zero;
         }
 
+
         // Helper 2: Displays total unwatched time in the window title bar
         private void UpdateWatchTimeSummary(TimeSpan total, TimeSpan remaining)
         {
@@ -2535,15 +2782,17 @@ namespace MediaControlApp.Forms
             }
 
 
+            // Pass 32 to match your 32px high buttons
+            ApplyTextBoxStyle(txtSearch, Color.FromArgb(60, 64, 67), Color.White, 32);
+
             ApplyButtonStyle(OpenFileLocation, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnCollapseAll, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
+            ApplyButtonStyle(btnRandomPick, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnoptions, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
-            ApplyButtonStyle(btnRestoreBackup, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(BtnFavourite, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnRefresh, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnOrganiz, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(BtnAutoRename, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
-            ApplyButtonStyle(btnAutoRenameOptions, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
             ApplyButtonStyle(btnSupport, Color.FromArgb(60, 64, 67), Color.White); // Dark Charcoal (Blends nicely with dark forms)
 
 
@@ -4143,6 +4392,13 @@ namespace MediaControlApp.Forms
                     FontHelper.ApplyFontToForm(this, newFontSize, newFontFamily);
                 };
 
+                // Connect the backup restore callback to reload items and refresh UI
+                optionsForm.OnDatabaseRestored = () =>
+                {
+                    items = MediaCache.Load(JsonPath);
+                    RefreshAll();
+                };
+
                 optionsForm.ShowDialog(this);
             }
         }
@@ -4252,46 +4508,88 @@ namespace MediaControlApp.Forms
             AppConfig.Save(_userSettings);
         }
 
+
+
+
+
+
+        private string ResolveTargetTitleFromNode(TreeNode node)
+        {
+            if (node == null) return null;
+
+            string nodeText = node.Text.Replace("★ ", "").Trim();
+            string[] restrictedHeaders = {
+        "Top", "Continue", "Watched", "Recently added", "Recently Added",
+        "Films", "Film", "Other"
+    };
+
+            bool isRestrictedHeader = Array.Exists(restrictedHeaders, r => r.Equals(nodeText, StringComparison.OrdinalIgnoreCase));
+            bool isYearHeader = Regex.IsMatch(nodeText, @"^(19|20)\d{2}$");
+
+            // If the selected node itself is a category header or year folder, stop immediately and return null
+            if (isRestrictedHeader || isYearHeader)
+            {
+                return null;
+            }
+
+            // 1. If Tag contains a list of MediaItems (Season node or Film group node)
+            if (node.Tag is List<MediaItem> items && items.Count > 0)
+            {
+                var first = items[0];
+                string name = first.CachedSeriesName;
+
+                if (string.IsNullOrWhiteSpace(name) ||
+                    Array.Exists(restrictedHeaders, r => r.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    name = Path.GetFileNameWithoutExtension(first.FilePath);
+                }
+                return name;
+            }
+
+            // 2. If Tag contains a single MediaItem
+            if (node.Tag is MediaItem item)
+            {
+                string name = !string.IsNullOrWhiteSpace(item.CachedSeriesName)
+                    ? item.CachedSeriesName
+                    : Path.GetFileNameWithoutExtension(item.FilePath);
+
+                if (!Array.Exists(restrictedHeaders, r => r.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return name;
+                }
+            }
+
+            return nodeText;
+        }
+
+
+
+
         private void BtnCheckIMDb_Click(object sender, EventArgs e)
         {
             string targetToClean = null;
 
-            if (treeShows != null && treeShows.SelectedNode != null)
+            if (listEpisodes.SelectedItems.Count > 0 && listEpisodes.SelectedItems[0].Tag is MediaItem ep)
             {
-                TreeNode node = treeShows.SelectedNode;
-
-                if (node.Tag is List<MediaItem> items && items.Count > 0)
-                {
-                    // Use the CachedSeriesName if available, or pass the full file path
-                    targetToClean = !string.IsNullOrWhiteSpace(items[0].CachedSeriesName)
-                        ? items[0].CachedSeriesName
-                        : BuildFullPath(items[0].FilePath);
-                }
-                else if (node.Tag is MediaItem item)
-                {
-                    targetToClean = !string.IsNullOrWhiteSpace(item.CachedSeriesName)
-                        ? item.CachedSeriesName
-                        : BuildFullPath(item.FilePath);
-                }
-                else if (!string.IsNullOrWhiteSpace(node.Text))
-                {
-                    targetToClean = node.Text;
-                }
+                targetToClean = !string.IsNullOrWhiteSpace(ep.CachedSeriesName)
+                    ? ep.CachedSeriesName
+                    : Path.GetFileNameWithoutExtension(ep.FilePath);
+            }
+            else if (treeShows.SelectedNode != null)
+            {
+                targetToClean = ResolveTargetTitleFromNode(treeShows.SelectedNode);
             }
 
-            if (string.IsNullOrWhiteSpace(targetToClean))
+            // Explicitly block restricted headers or null values from opening a browser search
+            string[] restrictedHeaders = { "Top", "Continue", "Watched", "Recently added", "Recently Added", "Films", "Film", "Other" };
+            if (string.IsNullOrWhiteSpace(targetToClean) || Array.Exists(restrictedHeaders, r => r.Equals(targetToClean.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
-                DarkMessageBox.Show(this, "Please select a media item or node first.", "No Selection", MessageBoxButtons.OK, darkMode);
-                return;
+                return; // Silently abort if a category header is selected
             }
 
             string cleanTitle = CleanMediaTitle(targetToClean);
 
-            if (string.IsNullOrWhiteSpace(cleanTitle))
-            {
-                DarkMessageBox.Show(this, "Could not determine a valid title from the selection.", "Parsing Error", MessageBoxButtons.OK, darkMode);
-                return;
-            }
+            if (string.IsNullOrWhiteSpace(cleanTitle)) return;
 
             string searchUrl = $"https://www.imdb.com/find/?q={Uri.EscapeDataString(cleanTitle)}";
 
@@ -4315,44 +4613,28 @@ namespace MediaControlApp.Forms
         {
             string targetToClean = null;
 
-            if (treeShows != null && treeShows.SelectedNode != null)
+            if (listEpisodes.SelectedItems.Count > 0 && listEpisodes.SelectedItems[0].Tag is MediaItem ep)
             {
-                TreeNode node = treeShows.SelectedNode;
-
-                if (node.Tag is List<MediaItem> items && items.Count > 0)
-                {
-                    // Use the CachedSeriesName if available, or pass the full file path
-                    targetToClean = !string.IsNullOrWhiteSpace(items[0].CachedSeriesName)
-                        ? items[0].CachedSeriesName
-                        : BuildFullPath(items[0].FilePath);
-                }
-                else if (node.Tag is MediaItem item)
-                {
-                    targetToClean = !string.IsNullOrWhiteSpace(item.CachedSeriesName)
-                        ? item.CachedSeriesName
-                        : BuildFullPath(item.FilePath);
-                }
-                else if (!string.IsNullOrWhiteSpace(node.Text))
-                {
-                    targetToClean = node.Text;
-                }
+                targetToClean = !string.IsNullOrWhiteSpace(ep.CachedSeriesName)
+                    ? ep.CachedSeriesName
+                    : Path.GetFileNameWithoutExtension(ep.FilePath);
+            }
+            else if (treeShows.SelectedNode != null)
+            {
+                targetToClean = ResolveTargetTitleFromNode(treeShows.SelectedNode);
             }
 
-            if (string.IsNullOrWhiteSpace(targetToClean))
+            // Explicitly block restricted headers or null values from opening a browser search
+            string[] restrictedHeaders = { "Top", "Continue", "Watched", "Recently added", "Recently Added", "Films", "Film", "Other" };
+            if (string.IsNullOrWhiteSpace(targetToClean) || Array.Exists(restrictedHeaders, r => r.Equals(targetToClean.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
-                DarkMessageBox.Show(this, "Please select a media item or node first.", "No Selection", MessageBoxButtons.OK, darkMode);
-                return;
+                return; // Silently abort if a category header is selected
             }
 
             string cleanTitle = CleanMediaTitle(targetToClean);
 
-            if (string.IsNullOrWhiteSpace(cleanTitle))
-            {
-                DarkMessageBox.Show(this, "Could not determine a valid title from the selection.", "Parsing Error", MessageBoxButtons.OK, darkMode);
-                return;
-            }
+            if (string.IsNullOrWhiteSpace(cleanTitle)) return;
 
-            // TVMaze web search query URL
             string searchUrl = $"https://www.tvmaze.com/search?q={Uri.EscapeDataString(cleanTitle)}";
 
             try
@@ -4549,23 +4831,20 @@ namespace MediaControlApp.Forms
 
         private async void BtnAutoRename_Click(object sender, EventArgs e)
         {
-            // 1. Capture the file paths of all items in the currently selected node before renaming
-            var targetFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Capture target identifiers before execution
+            string targetShowName = null;
+            string targetSeasonText = null;
+
             if (treeShows.SelectedNode != null)
             {
-                var selectedItems = GetItemsFromNode(treeShows.SelectedNode);
-                foreach (var item in selectedItems)
+                if (treeShows.SelectedNode.Parent != null)
                 {
-                    if (!string.IsNullOrEmpty(item.FilePath))
-                    {
-                        targetFilePaths.Add(item.FilePath);
-                    }
+                    targetShowName = treeShows.SelectedNode.Parent.Text.Replace("★ ", "").Trim();
+                    targetSeasonText = treeShows.SelectedNode.Text.Replace("★ ", "").Trim();
                 }
-
-                // Fallback if the node holds a single MediaItem directly
-                if (targetFilePaths.Count == 0 && treeShows.SelectedNode.Tag is MediaItem singleItem)
+                else
                 {
-                    targetFilePaths.Add(singleItem.FilePath);
+                    targetShowName = treeShows.SelectedNode.Text.Replace("★ ", "").Trim();
                 }
             }
 
@@ -4579,23 +4858,47 @@ namespace MediaControlApp.Forms
                 (item, oldPath, newPath) => TransferMediaItemState(item, oldPath, newPath),
                 async () => await SaveAndMergeState(),
                 () => RefreshAll(),
-                () => { } // Handled via BeginInvoke below for precise timing
-            );
-
-            // 2. Once refresh completes, find the new node containing these items (using their updated file paths)
-            if (targetFilePaths.Count > 0)
-            {
-                this.BeginInvoke((MethodInvoker)delegate
+                () =>
                 {
-                    TreeNode matchedNode = FindNodeByMediaItems(treeShows.Nodes, targetFilePaths);
-                    if (matchedNode != null)
+                    this.BeginInvoke((MethodInvoker)delegate
                     {
-                        treeShows.SelectedNode = matchedNode;
-                        matchedNode.EnsureVisible();
-                        TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(matchedNode));
+                        TreeNode matchedNode = FindNodeByShowAndSeason(treeShows.Nodes, targetShowName, targetSeasonText);
+                        if (matchedNode != null)
+                        {
+                            treeShows.SelectedNode = matchedNode;
+                            matchedNode.EnsureVisible();
+                            TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(matchedNode));
+                        }
+                    });
+                }
+            );
+        }
+
+        private TreeNode FindNodeByShowAndSeason(TreeNodeCollection nodes, string showName, string seasonText)
+        {
+            foreach (TreeNode node in nodes)
+            {
+                string cleanNodeText = node.Text.Replace("★ ", "").Trim();
+
+                if (string.Equals(cleanNodeText, showName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrEmpty(seasonText)) return node;
+
+                    foreach (TreeNode child in node.Nodes)
+                    {
+                        string cleanChildText = child.Text.Replace("★ ", "").Trim();
+                        if (string.Equals(cleanChildText, seasonText, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return child;
+                        }
                     }
-                });
+                    return node;
+                }
+
+                TreeNode deepMatch = FindNodeByShowAndSeason(node.Nodes, showName, seasonText);
+                if (deepMatch != null) return deepMatch;
             }
+            return null;
         }
 
         // Helper method to locate tree nodes by matching their internal MediaItem file paths
@@ -4625,39 +4928,19 @@ namespace MediaControlApp.Forms
         }
 
 
-        private void btnAutoRenameOptions_Click(object sender, EventArgs e)
-        {
-            using (var settingsForm = new AutoRenameSettingsForm(darkMode))
-            {
-                if (settingsForm.ShowDialog(this) == DialogResult.OK)
-                {
-                    // Load local settings from C: drive JSON via AppConfig
-                    var appSettings = AppConfig.Load();
-
-                    // Persist values to local JSON config
-                    appSettings.RenameFormatPattern = settingsForm.CustomFormatPattern;
-                    appSettings.RenameIncludeShow = settingsForm.IncludeShow;
-                    appSettings.RenamePadNumbers = settingsForm.PadNumbers;
-                    appSettings.RenameReplaceWithSpaces = settingsForm.ReplaceWithSpaces;
-                    appSettings.RenameReplaceDots = settingsForm.ReplaceDots;
-                    appSettings.RenameRemoveSpecial = settingsForm.RemoveSpecial;
-
-                    AppConfig.Save(appSettings);
-                }
-            }
-        }
-
-
-
-
-
-
 
         private void UpdateCurrentUserLabel()
         {
             if (lblCurrentUser != null)
             {
                 lblCurrentUser.Text = $"Current User: {AppConfig.CurrentUser}";
+            }
+
+            // Automatically pull and display the assembly version in your 'version' label
+            if (version != null)
+            {
+                string ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(2);
+                version.Text = $"v{ver}";
             }
         }
 
@@ -4781,57 +5064,162 @@ namespace MediaControlApp.Forms
             }
         }
 
-        private void btnRestoreBackup_Click(object sender, EventArgs e)
+        private void btnRandomPick_Click(object sender, EventArgs e)
         {
-            using (var form = new RestoreBackupForm(darkMode))
+            if (items == null || items.Count == 0)
             {
-                if (form.ShowDialog(this) == DialogResult.OK && form.SelectedBackup != null)
-                {
-                    BackupFileInfo selectedBackup = form.SelectedBackup;
+                DarkMessageBox.Show(this, "Your media library is empty.", "Random Picker", MessageBoxButtons.OK, darkMode);
+                return;
+            }
 
-                    var confirm = DarkMessageBox.Show(
-                        this,
-                        $"Are you sure you want to restore from backup:\n\n'{selectedBackup.FileName}'?",
-                        "Confirm Restore",
-                        MessageBoxButtons.YesNo,
-                        darkMode
-                    );
+            // 1. Prompt user for category choice
+            string choice = ShowRandomChoiceDialog();
+            if (string.IsNullOrEmpty(choice)) return; // Canceled
 
-                    if (confirm == DialogResult.Yes)
-                    {
-                        this.Cursor = Cursors.WaitCursor;
-                        try
-                        {
-                            bool success = RestoreBackupForm.RestoreBackup(
-                                selectedBackup.FilePath,
-                                JsonPath
-                            );
+            // 2. Filter items based on choice
+            List<MediaItem> pool = new();
+            if (choice == "Film")
+            {
+                pool = items.Where(IsFilmItem).ToList();
+            }
+            else if (choice == "Show")
+            {
+                pool = items.Where(i => !IsFilmItem(i)).ToList();
+            }
+            else // "Either"
+            {
+                pool = items.ToList();
+            }
 
-                            if (success)
-                            {
-                                items = MediaCache.Load(JsonPath);
-                                RefreshAll();
-                                DarkMessageBox.Show(this, "Database successfully restored from backup!", "Restore Complete", MessageBoxButtons.OK, darkMode);
-                            }
-                            else
-                            {
-                                DarkMessageBox.Show(this, "Failed to restore backup file.", "Error", MessageBoxButtons.OK, darkMode);
-                            }
-                        }
-                        finally
-                        {
-                            this.Cursor = Cursors.Default;
-                        }
-                    }
-                }
+            if (pool.Count == 0)
+            {
+                DarkMessageBox.Show(this, $"No items found for category: {choice}", "Random Picker", MessageBoxButtons.OK, darkMode);
+                return;
+            }
+
+            // 3. Group by distinct title so it picks a whole show or film (not a random individual episode)
+            var uniqueTitles = pool
+                .Select(i => IsFilmItem(i) ? Path.GetFileNameWithoutExtension(i.FilePath) : i.CachedSeriesName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (uniqueTitles.Count == 0) return;
+
+            // 4. Pick one at random
+            string randomTitle = uniqueTitles[new Random().Next(uniqueTitles.Count)];
+
+            // 5. Find and select the corresponding node in treeShows
+            TreeNode targetNode = FindNodeByTitle(treeShows.Nodes, randomTitle);
+            if (targetNode != null)
+            {
+                treeShows.SelectedNode = targetNode;
+                targetNode.EnsureVisible();
+                treeShows.Focus();
+            }
+            else
+            {
+                DarkMessageBox.Show(this, $"Could not locate '{randomTitle}' in the tree view.", "Random Picker", MessageBoxButtons.OK, darkMode);
             }
         }
 
+        private bool IsFilmItem(MediaItem item)
+        {
+            if (!string.IsNullOrEmpty(item.CachedCategory) &&
+                item.CachedCategory.Contains("Film", StringComparison.OrdinalIgnoreCase))
+                return true;
 
+            if (!string.IsNullOrEmpty(item.FilePath) &&
+                (item.FilePath.Contains(@"\Films\", StringComparison.OrdinalIgnoreCase) ||
+                 item.FilePath.Contains(@"\Film\", StringComparison.OrdinalIgnoreCase)))
+                return true;
 
+            return false;
+        }
 
+        private TreeNode FindNodeByTitle(TreeNodeCollection nodes, string title)
+        {
+            foreach (TreeNode node in nodes)
+            {
+                string cleanText = node.Text.Replace("★ ", "").Trim();
+                if (string.Equals(cleanText, title, StringComparison.OrdinalIgnoreCase))
+                {
+                    return node;
+                }
+                TreeNode childMatch = FindNodeByTitle(node.Nodes, title);
+                if (childMatch != null) return childMatch;
+            }
+            return null;
+        }
 
+        private string ShowRandomChoiceDialog()
+        {
+            using (Form dlg = new Form())
+            {
+                dlg.Text = "Random Picker";
+                dlg.Size = new Size(360, 210);
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.MaximizeBox = false;
+                dlg.MinimizeBox = false;
 
+                Color backColor = darkMode ? Color.FromArgb(35, 35, 35) : SystemColors.Control;
+                Color textColor = darkMode ? Color.White : Color.Black;
+                dlg.BackColor = backColor;
+                dlg.ForeColor = textColor;
+
+                Label lbl = new Label
+                {
+                    Text = "What would you like to pick?",
+                    Dock = DockStyle.Top,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+                    Height = 45
+                };
+
+                Panel pnlButtons = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
+
+                Button btnFilm = CreateDialogButton("Film / Movie", Color.FromArgb(0, 122, 204), 10);
+                Button btnShow = CreateDialogButton("TV Show", Color.FromArgb(40, 167, 69), 50);
+                Button btnEither = CreateDialogButton("Surprise Me (Either)", Color.FromArgb(108, 117, 125), 90);
+
+                string result = "";
+                btnFilm.Click += (s, e) => { result = "Film"; dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+                btnShow.Click += (s, e) => { result = "Show"; dlg.DialogResult = DialogResult.Yes; dlg.Close(); };
+                btnEither.Click += (s, e) => { result = "Either"; dlg.DialogResult = DialogResult.Retry; dlg.Close(); };
+
+                pnlButtons.Controls.Add(btnEither);
+                pnlButtons.Controls.Add(btnShow);
+                pnlButtons.Controls.Add(btnFilm);
+
+                dlg.Controls.Add(pnlButtons);
+                dlg.Controls.Add(lbl);
+
+                if (dlg.ShowDialog(this) == DialogResult.Cancel) return null;
+                return result;
+            }
+        }
+
+        private Button CreateDialogButton(string text, Color col, int topOffset)
+        {
+            return new Button
+            {
+                Text = text,
+                Top = topOffset,
+                Left = 40,
+                Width = 260,
+                Height = 32,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = col,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
+            };
+        }
+
+        private void tableLayoutPanel1_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
     }
 
 }

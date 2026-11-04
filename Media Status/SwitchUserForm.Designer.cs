@@ -20,6 +20,8 @@
             grpUser = new System.Windows.Forms.GroupBox();
             cmbUsers = new System.Windows.Forms.ComboBox();
             lblSelect = new System.Windows.Forms.Label();
+            btnAdd = new System.Windows.Forms.Button();
+            btnRemove = new System.Windows.Forms.Button();
             btnSwitch = new System.Windows.Forms.Button();
             btnCancel = new System.Windows.Forms.Button();
             grpUser.SuspendLayout();
@@ -33,7 +35,7 @@
             grpUser.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             grpUser.Name = "grpUser";
             grpUser.Padding = new System.Windows.Forms.Padding(4, 3, 4, 3);
-            grpUser.Size = new System.Drawing.Size(330, 95);
+            grpUser.Size = new System.Drawing.Size(390, 95);
             grpUser.TabIndex = 0;
             grpUser.TabStop = false;
             grpUser.Text = "Active Profile";
@@ -45,7 +47,7 @@
             cmbUsers.Location = new System.Drawing.Point(21, 50);
             cmbUsers.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             cmbUsers.Name = "cmbUsers";
-            cmbUsers.Size = new System.Drawing.Size(288, 23);
+            cmbUsers.Size = new System.Drawing.Size(348, 23);
             cmbUsers.TabIndex = 1;
             // 
             // lblSelect
@@ -58,25 +60,45 @@
             lblSelect.TabIndex = 0;
             lblSelect.Text = "Select User Account:";
             // 
+            // btnAdd
+            // 
+            btnAdd.Location = new System.Drawing.Point(14, 125);
+            btnAdd.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            btnAdd.Name = "btnAdd";
+            btnAdd.Size = new System.Drawing.Size(80, 29);
+            btnAdd.TabIndex = 1;
+            btnAdd.Text = "Add User";
+            btnAdd.UseVisualStyleBackColor = true;
+            // 
+            // btnRemove
+            // 
+            btnRemove.Location = new System.Drawing.Point(101, 125);
+            btnRemove.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            btnRemove.Name = "btnRemove";
+            btnRemove.Size = new System.Drawing.Size(80, 29);
+            btnRemove.TabIndex = 2;
+            btnRemove.Text = "Remove";
+            btnRemove.UseVisualStyleBackColor = true;
+            // 
             // btnSwitch
             // 
             btnSwitch.DialogResult = System.Windows.Forms.DialogResult.OK;
-            btnSwitch.Location = new System.Drawing.Point(161, 125);
+            btnSwitch.Location = new System.Drawing.Point(226, 125);
             btnSwitch.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             btnSwitch.Name = "btnSwitch";
             btnSwitch.Size = new System.Drawing.Size(88, 29);
-            btnSwitch.TabIndex = 1;
+            btnSwitch.TabIndex = 3;
             btnSwitch.Text = "Switch";
             btnSwitch.UseVisualStyleBackColor = true;
             // 
             // btnCancel
             // 
             btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            btnCancel.Location = new System.Drawing.Point(256, 125);
+            btnCancel.Location = new System.Drawing.Point(321, 125);
             btnCancel.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new System.Drawing.Size(88, 29);
-            btnCancel.TabIndex = 2;
+            btnCancel.TabIndex = 4;
             btnCancel.Text = "Cancel";
             btnCancel.UseVisualStyleBackColor = true;
             // 
@@ -86,9 +108,11 @@
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             CancelButton = btnCancel;
-            ClientSize = new System.Drawing.Size(358, 166);
+            ClientSize = new System.Drawing.Size(418, 166);
             Controls.Add(btnCancel);
             Controls.Add(btnSwitch);
+            Controls.Add(btnRemove);
+            Controls.Add(btnAdd);
             Controls.Add(grpUser);
             FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
@@ -108,6 +132,8 @@
         private System.Windows.Forms.GroupBox grpUser;
         private System.Windows.Forms.Label lblSelect;
         private System.Windows.Forms.ComboBox cmbUsers;
+        private System.Windows.Forms.Button btnAdd;
+        private System.Windows.Forms.Button btnRemove;
         private System.Windows.Forms.Button btnSwitch;
         private System.Windows.Forms.Button btnCancel;
     }
