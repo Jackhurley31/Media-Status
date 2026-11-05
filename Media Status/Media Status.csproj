@@ -10,7 +10,7 @@
     <StartupObject>MediaControlApp.Program</StartupObject>
     <ApplicationIcon>Icon\Media Status_Icon.ico</ApplicationIcon>
     <Configurations>Debug;Release;Debugtest</Configurations>
-	<VersionPrefix>11.1</VersionPrefix>
+	<VersionPrefix>11.2</VersionPrefix>
   </PropertyGroup>
 
   <ItemGroup>

@@ -27,6 +27,7 @@ namespace Media_Status
 
         // Auto-Renamer Local Settings
         public string RenameFormatPattern { get; set; } = "{Show} - S{Season}E{Episode} - {Title}";
+
         public bool RenameIncludeShow { get; set; } = true;
         public bool RenamePadNumbers { get; set; } = true;
         public bool RenameReplaceWithSpaces { get; set; } = true;

@@ -35,9 +35,16 @@
             lblPreviewInput = new Label();
             btnSave = new Button();
             btnCancel = new Button();
+            groupBox1 = new GroupBox();
+            btnRemoveJunk = new Button();
+            btnAddJunk = new Button();
+            txtJunkTag = new TextBox();
+            lstJunkTags = new ListBox();
+            backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
             grpPattern.SuspendLayout();
             grpOptions.SuspendLayout();
             grpPreview.SuspendLayout();
+            groupBox1.SuspendLayout();
             SuspendLayout();
             // 
             // grpPattern
@@ -253,13 +260,65 @@
             btnCancel.Text = "Cancel";
             btnCancel.UseVisualStyleBackColor = true;
             // 
+            // groupBox1
+            // 
+            groupBox1.Controls.Add(btnRemoveJunk);
+            groupBox1.Controls.Add(btnAddJunk);
+            groupBox1.Controls.Add(txtJunkTag);
+            groupBox1.Controls.Add(lstJunkTags);
+            groupBox1.Location = new Point(558, 15);
+            groupBox1.Name = "groupBox1";
+            groupBox1.Size = new Size(292, 283);
+            groupBox1.TabIndex = 7;
+            groupBox1.TabStop = false;
+            groupBox1.Text = "Junk Tags";
+            // 
+            // btnRemoveJunk
+            // 
+            btnRemoveJunk.Location = new Point(203, 166);
+            btnRemoveJunk.Margin = new Padding(4, 3, 4, 3);
+            btnRemoveJunk.Name = "btnRemoveJunk";
+            btnRemoveJunk.Size = new Size(82, 27);
+            btnRemoveJunk.TabIndex = 11;
+            btnRemoveJunk.Text = "+ {Remove}";
+            btnRemoveJunk.UseVisualStyleBackColor = true;
+            btnRemoveJunk.Click += btnRemoveJunk_Click_1;
+            // 
+            // btnAddJunk
+            // 
+            btnAddJunk.Location = new Point(134, 166);
+            btnAddJunk.Margin = new Padding(4, 3, 4, 3);
+            btnAddJunk.Name = "btnAddJunk";
+            btnAddJunk.Size = new Size(61, 27);
+            btnAddJunk.TabIndex = 6;
+            btnAddJunk.Text = "+ {Add}";
+            btnAddJunk.UseVisualStyleBackColor = true;
+            btnAddJunk.Click += btnAddJunk_Click_1;
+            // 
+            // txtJunkTag
+            // 
+            txtJunkTag.Location = new Point(7, 166);
+            txtJunkTag.Margin = new Padding(4, 3, 4, 3);
+            txtJunkTag.Name = "txtJunkTag";
+            txtJunkTag.Size = new Size(119, 23);
+            txtJunkTag.TabIndex = 6;
+            // 
+            // lstJunkTags
+            // 
+            lstJunkTags.FormattingEnabled = true;
+            lstJunkTags.Location = new Point(6, 28);
+            lstJunkTags.Name = "lstJunkTags";
+            lstJunkTags.Size = new Size(251, 124);
+            lstJunkTags.TabIndex = 8;
+            // 
             // AutoRenameSettingsForm
             // 
             AcceptButton = btnSave;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnCancel;
-            ClientSize = new Size(565, 445);
+            ClientSize = new Size(863, 513);
+            Controls.Add(groupBox1);
             Controls.Add(btnCancel);
             Controls.Add(btnSave);
             Controls.Add(grpPreview);
@@ -279,6 +338,8 @@
             grpOptions.PerformLayout();
             grpPreview.ResumeLayout(false);
             grpPreview.PerformLayout();
+            groupBox1.ResumeLayout(false);
+            groupBox1.PerformLayout();
             ResumeLayout(false);
 
         }
@@ -303,5 +364,11 @@
         private System.Windows.Forms.Label lblPreviewOutput;
         private System.Windows.Forms.Button btnSave;
         private System.Windows.Forms.Button btnCancel;
+        private GroupBox groupBox1;
+        private ListBox lstJunkTags;
+        private TextBox txtJunkTag;
+        private Button btnAddJunk;
+        private Button btnRemoveJunk;
+        private System.ComponentModel.BackgroundWorker backgroundWorker1;
     }
 }

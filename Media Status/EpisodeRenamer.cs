@@ -15,33 +15,19 @@ public static class EpisodeRenamer
     private static readonly Dictionary<string, string> _lastRenameHistory = new(StringComparer.OrdinalIgnoreCase);
 
     public static async Task ExecuteAutoRenameAsync(
-        Form parentForm,
-        ListView listEpisodes,
-        TreeView treeShows,
-        bool darkMode,
-        Func<TreeNode, List<MediaItem>> getItemsFromNode,
-        Func<string, string> buildFullPath,
-        Action<MediaItem, string, string> transferState,
-        Func<Task> saveAndMergeState,
-        Action refreshAll,
-        Action refreshNodeSelection)
+     Form parentForm,
+     ListView listEpisodes,
+     TreeView treeShows,
+     bool darkMode,
+     Func<TreeNode, List<MediaItem>> getItemsFromNode,
+     Func<string, string> buildFullPath,
+     Action<MediaItem, string, string> transferState,
+     Func<Task> saveAndMergeState,
+     Action refreshAll,
+     Action refreshNodeSelection)
     {
-        if (_lastRenameHistory.Count > 0)
-        {
-            var revertAsk = DarkMessageBox.Show(parentForm,
-                $"Found {_lastRenameHistory.Count} recently renamed file(s) in this app session.\n\nDo you want to **Revert** back to their original names, or perform a **New Rename**?",
-                "Rename or Revert", MessageBoxButtons.YesNoCancel, darkMode);
-
-            if (revertAsk == DialogResult.Yes)
-            {
-                await RevertLastRenameAsync(parentForm, listEpisodes, buildFullPath, transferState, saveAndMergeState, refreshAll, refreshNodeSelection, darkMode);
-                return;
-            }
-            else if (revertAsk == DialogResult.Cancel)
-            {
-                return;
-            }
-        }
+       
+     
 
         List<MediaItem> itemsToRename = new();
         string targetName = string.Empty;
@@ -150,7 +136,13 @@ public static class EpisodeRenamer
 
         try
         {
-            string commonJunkRegex = @"(?i)\b(720p|1080p|2160p|4K|HDTV|WEB-DL|WEBRip|HDRip|DVDRip|BDRip|BRRip|BluRay|HD|x264|x265|HEVC|AVC|Xvid|DivX|10bit|8bit|HDR|HDR10|Atmos|TrueHD|DDP?|DD\+|AC3|AAC|MP3|DTS|CH|\d+CH|PROPER|REPACK|INTERNAL|EXTENDED|UNRATED|REMASTERED|PSA|FENIX|EZTV|AFG|DSNP|NF|AMZN|HULU|ATVP|MAX|PCOK|CRITERION|TIFY)\b";
+
+            var localSettings = AppConfig.Load();
+
+            var junkTags = JunkTagManager.Load();
+
+            string commonJunkRegex =
+                $@"(?i)\b({string.Join("|", junkTags)})\b";
 
             var previewItems = new List<AutoRenamePreviewItem>();
 
@@ -199,7 +191,6 @@ public static class EpisodeRenamer
                 // =========================================================================
                 // TV SHOWS RENAME PREVIEW (Loads from Local AppConfig JSON & TVMaze API)
                 // =========================================================================
-                var localSettings = AppConfig.Load();
 
                 string rawPattern = localSettings.RenameFormatPattern;
                 string formatPattern = string.IsNullOrWhiteSpace(rawPattern) ? "{Show} - S{Season}E{Episode} - {Title}" : rawPattern;
@@ -422,9 +413,22 @@ public static class EpisodeRenamer
                                     _lastRenameHistory[preview.NewFullPath] = preview.OriginalFullPath;
                                 }
 
-                                transferState(preview.MediaItem, preview.OriginalFullPath, preview.NewFullPath);
                                 preview.MediaItem.FilePath = preview.NewFullPath;
                                 preview.MediaItem.CacheParsed();
+
+                                // Update visible ListView row immediately
+                                parentForm.Invoke((MethodInvoker)delegate
+                                {
+                                    foreach (ListViewItem lvi in listEpisodes.Items)
+                                    {
+                                        if (ReferenceEquals(lvi.Tag, preview.MediaItem))
+                                        {
+                                            lvi.Text = Path.GetFileName(preview.NewFullPath);
+                                            break;
+                                        }
+                                    }
+                                });
+
                                 renamedCount++;
                             }
                         }

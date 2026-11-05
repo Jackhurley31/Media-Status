@@ -1,9 +1,12 @@
-﻿using System;
+﻿using Media_Status;
+using Media_Status.Properties;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
-using Media_Status.Properties;
+using System.Linq;
+
 
 namespace MediaStatus
 {
@@ -170,6 +173,17 @@ namespace MediaStatus
             itemReplaceDots.Checked = settings.RenameReplaceDots;
             itemRemoveSpecial.Checked = settings.RenameRemoveSpecial;
 
+
+
+            lstJunkTags.Items.Clear();
+
+            foreach (string tag in JunkTagManager.Load())
+            {
+                lstJunkTags.Items.Add(tag);
+            }
+
+
+
             UpdatePreview();
         }
 
@@ -184,7 +198,57 @@ namespace MediaStatus
             settings.RenameReplaceDots = itemReplaceDots.Checked;
             settings.RenameRemoveSpecial = itemRemoveSpecial.Checked;
 
-            Media_Status.AppConfig.Save(settings); // Persists cleanly to local C: drive JSON
+
+
+
+
+
+            Media_Status.AppConfig.Save(settings);
+            Media_Status.JunkTagManager.Save(
+                lstJunkTags.Items
+                    .Cast<string>()
+                    .ToList());
+
+            // Persists cleanly to local C: drive JSON
+        }
+
+
+
+
+    
+
+        private void btnAddJunk_Click_1(object sender, EventArgs e)
+        {
+            string tag = txtJunkTag.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(tag))
+                return;
+
+            if (!lstJunkTags.Items.Contains(tag))
+            {
+                lstJunkTags.Items.Add(tag);
+            }
+
+            txtJunkTag.Clear();
+            txtJunkTag.Focus();
+        }
+
+        private void btnRemoveJunk_Click_1(object sender, EventArgs e)
+        {
+            if (lstJunkTags.SelectedItem == null)
+                return;
+
+            string tag = lstJunkTags.SelectedItem.ToString();
+
+            if (DarkMessageBox.Show(
+                this,
+                $"Are you sure you want to remove '{tag}'?",
+                "Remove Junk Tag",
+                MessageBoxButtons.YesNo,
+                true) == DialogResult.Yes)
+            {
+                lstJunkTags.Items.Remove(lstJunkTags.SelectedItem);
+            }
         }
     }
 }

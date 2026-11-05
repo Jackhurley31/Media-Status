@@ -4945,9 +4945,16 @@ namespace MediaControlApp.Forms
                         TreeNode matchedNode = FindNodeByShowAndSeason(treeShows.Nodes, targetShowName, targetSeasonText);
                         if (matchedNode != null)
                         {
+                            matchedNode.Text = matchedNode.Text + " *";
+
                             treeShows.SelectedNode = matchedNode;
                             matchedNode.EnsureVisible();
-                            TreeShows_AfterSelect(treeShows, new TreeViewEventArgs(matchedNode));
+
+                            treeShows.Refresh();
+
+                            TreeShows_AfterSelect(
+                                treeShows,
+                                new TreeViewEventArgs(matchedNode));
                         }
                     });
                 }
@@ -5179,10 +5186,13 @@ namespace MediaControlApp.Forms
 
             // 3. Group by distinct title so it picks a whole show or film (not a random individual episode)
             var uniqueTitles = pool
-                .Select(i => IsFilmItem(i) ? Path.GetFileNameWithoutExtension(i.FilePath) : i.CachedSeriesName)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+    .Select(i => IsFilmItem(i)
+    ? GetFilmTitle(i)
+    : i.CachedSeriesName)
+    .Where(n => !string.IsNullOrWhiteSpace(n))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToList();
+
 
             if (uniqueTitles.Count == 0) return;
 
@@ -5222,13 +5232,30 @@ namespace MediaControlApp.Forms
             foreach (TreeNode node in nodes)
             {
                 string cleanText = node.Text.Replace("★ ", "").Trim();
+
+                // Only return actual media nodes, not folders like Films, Continue, 2013 etc.
+                TreeNode rootNode = node;
+
+                while (rootNode.Parent != null)
+                {
+                    rootNode = rootNode.Parent;
+                }
+
+                bool isSpecialFolder =
+                    rootNode.Text.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
+                    rootNode.Text.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
+                    rootNode.Text.Equals("Recently Added", StringComparison.OrdinalIgnoreCase);
+
                 if (string.Equals(cleanText, title, StringComparison.OrdinalIgnoreCase))
                 {
                     return node;
                 }
+
                 TreeNode childMatch = FindNodeByTitle(node.Nodes, title);
-                if (childMatch != null) return childMatch;
+                if (childMatch != null)
+                    return childMatch;
             }
+
             return null;
         }
 

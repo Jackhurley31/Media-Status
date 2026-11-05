@@ -135,8 +135,8 @@ namespace MediaControlApp.Forms
             // 
             // splitMain.Panel2
             // 
-            splitMain.Panel2.Controls.Add(txtEpisodeSummary);
             splitMain.Panel2.Controls.Add(listEpisodes);
+            splitMain.Panel2.Controls.Add(txtEpisodeSummary);
             splitMain.Size = new Size(1231, 537);
             splitMain.SplitterDistance = 353;
             splitMain.TabIndex = 0;
@@ -155,8 +155,8 @@ namespace MediaControlApp.Forms
             // 
             // splitContainer1.Panel2
             // 
-            splitContainer1.Panel2.Controls.Add(groupBox1);
             splitContainer1.Panel2.Controls.Add(treeShows);
+            splitContainer1.Panel2.Controls.Add(groupBox1);
             splitContainer1.Size = new Size(353, 537);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
@@ -228,7 +228,7 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 326);
+            treeShows.Size = new Size(353, 285);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
             // 
@@ -250,7 +250,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 537);
+            listEpisodes.Size = new Size(874, 377);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
