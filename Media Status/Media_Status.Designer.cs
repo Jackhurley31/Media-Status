@@ -140,10 +140,9 @@ namespace MediaControlApp.Forms
             splitMain.Panel2.Controls.Add(txtEpisodeSummary);
             splitMain.Panel2.Controls.Add(layoutBottomPanel);
             splitMain.Panel2MinSize = 900;
-            splitMain.Size = new Size(1231, 736);
+            splitMain.Size = new Size(1331, 736);
             splitMain.SplitterDistance = 327;
             splitMain.TabIndex = 0;
-            // 
             // 
             // splitContainer1
             // 
@@ -152,17 +151,17 @@ namespace MediaControlApp.Forms
             splitContainer1.Location = new Point(0, 0);
             splitContainer1.Name = "splitContainer1";
             splitContainer1.Orientation = Orientation.Horizontal;
-            splitContainer1.Panel1MinSize = 50;
-            splitContainer1.Panel2MinSize = 20;
             // 
             // splitContainer1.Panel1
             // 
             splitContainer1.Panel1.Controls.Add(picPoster);
+            splitContainer1.Panel1MinSize = 50;
             // 
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
             splitContainer1.Panel2.Controls.Add(groupBox1);
+            splitContainer1.Panel2MinSize = 20;
             splitContainer1.Size = new Size(327, 736);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
@@ -246,7 +245,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(900, 374);
+            listEpisodes.Size = new Size(1000, 374);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -287,7 +286,7 @@ namespace MediaControlApp.Forms
             txtEpisodeSummary.Dock = DockStyle.Bottom;
             txtEpisodeSummary.Location = new Point(0, 374);
             txtEpisodeSummary.Name = "txtEpisodeSummary";
-            txtEpisodeSummary.Size = new Size(900, 160);
+            txtEpisodeSummary.Size = new Size(1000, 160);
             txtEpisodeSummary.TabIndex = 7;
             txtEpisodeSummary.Text = "";
             // 
@@ -309,7 +308,7 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(900, 202);
+            layoutBottomPanel.Size = new Size(1000, 202);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -326,7 +325,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel2.Dock = DockStyle.Fill;
             flowLayoutPanel2.Location = new Point(3, 3);
             flowLayoutPanel2.Name = "flowLayoutPanel2";
-            flowLayoutPanel2.Size = new Size(444, 62);
+            flowLayoutPanel2.Size = new Size(494, 62);
             flowLayoutPanel2.TabIndex = 0;
             // 
             // btnCollapseAll
@@ -417,9 +416,9 @@ namespace MediaControlApp.Forms
             flowLayoutPanel3.Controls.Add(btnPlay);
             flowLayoutPanel3.Controls.Add(btnStop);
             flowLayoutPanel3.Dock = DockStyle.Fill;
-            flowLayoutPanel3.Location = new Point(453, 3);
+            flowLayoutPanel3.Location = new Point(503, 3);
             flowLayoutPanel3.Name = "flowLayoutPanel3";
-            flowLayoutPanel3.Size = new Size(444, 62);
+            flowLayoutPanel3.Size = new Size(494, 62);
             flowLayoutPanel3.TabIndex = 1;
             // 
             // btnDelete
@@ -505,7 +504,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(3, 71);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(444, 128);
+            flowLayoutPanel1.Size = new Size(494, 128);
             flowLayoutPanel1.TabIndex = 2;
             // 
             // btnoptions
@@ -591,9 +590,9 @@ namespace MediaControlApp.Forms
             gbActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             gbActions.Controls.Add(flowActionsInner);
             gbActions.Dock = DockStyle.Fill;
-            gbActions.Location = new Point(453, 71);
+            gbActions.Location = new Point(503, 71);
             gbActions.Name = "gbActions";
-            gbActions.Size = new Size(444, 128);
+            gbActions.Size = new Size(494, 128);
             gbActions.TabIndex = 3;
             gbActions.TabStop = false;
             gbActions.Text = "Actions";
@@ -607,7 +606,7 @@ namespace MediaControlApp.Forms
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
-            flowActionsInner.Size = new Size(438, 108);
+            flowActionsInner.Size = new Size(488, 108);
             flowActionsInner.TabIndex = 0;
             // 
             // gb_action_setting2
@@ -649,7 +648,7 @@ namespace MediaControlApp.Forms
             gb_action_setting1.Controls.Add(chkFullscreen);
             gb_action_setting1.Controls.Add(chkSubtitles);
             gb_action_setting1.Controls.Add(cmbScreens);
-            gb_action_setting1.Location = new Point(3, 111);
+            gb_action_setting1.Location = new Point(156, 3);
             gb_action_setting1.Name = "gb_action_setting1";
             gb_action_setting1.Size = new Size(284, 102);
             gb_action_setting1.TabIndex = 6;
@@ -694,10 +693,10 @@ namespace MediaControlApp.Forms
             // 
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(1231, 736);
+            ClientSize = new Size(1331, 736);
             Controls.Add(splitMain);
             Icon = (Icon)resources.GetObject("$this.Icon");
-            MinimumSize = new Size(1120, 775);
+            MinimumSize = new Size(1347, 775);
             Name = "MainForm";
             Text = "Media Control";
             WindowState = FormWindowState.Maximized;
