@@ -311,25 +311,42 @@ namespace MediaControlApp.Forms
 
             splitContainer1.FixedPanel = FixedPanel.Panel1;
 
+        }
+
+
+
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
             if (_userSettings != null)
             {
-                // Set outer split first
+                // Set outer split (Left / Right)
                 if (_userSettings.SplitMainDistance > 0 && _userSettings.SplitMainDistance < splitMain.Width)
                 {
                     splitMain.SplitterDistance = _userSettings.SplitMainDistance;
                 }
 
-                // Then set inner split
-                if (_userSettings.SplitContainer1Distance > 0 && _userSettings.SplitContainer1Distance < splitContainer1.Height)
+                // Set inner split (Poster Panel 1 / Tree Panel 2) with safety clamping
+                if (_userSettings.SplitContainer1Distance > 0)
                 {
-                    splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
+                    int minAllowed = splitContainer1.Panel1MinSize;
+                    int maxAllowed = splitContainer1.Height - splitContainer1.Panel2MinSize;
+
+                    if (_userSettings.SplitContainer1Distance >= minAllowed && _userSettings.SplitContainer1Distance <= maxAllowed)
+                    {
+                        splitContainer1.SplitterDistance = _userSettings.SplitContainer1Distance;
+                    }
+                    else if (_userSettings.SplitContainer1Distance > maxAllowed && maxAllowed > minAllowed)
+                    {
+                        splitContainer1.SplitterDistance = maxAllowed;
+                    }
                 }
             }
-
-
-
-
         }
+
+
 
 
 
@@ -4082,9 +4099,7 @@ namespace MediaControlApp.Forms
                 System.Diagnostics.Debug.WriteLine($"Error during exit save: {ex.Message}");
             }
 
-
             _autoSaveTimer?.Dispose();
-
         }
 
         private async void btnOrganiz_Click(object sender, EventArgs e)
@@ -5323,10 +5338,9 @@ namespace MediaControlApp.Forms
             };
         }
 
-        private void tableLayoutPanel1_Paint(object sender, PaintEventArgs e)
-        {
 
-        }
+
+
     }
 
 }

@@ -21,6 +21,7 @@ namespace Media_Status
         public bool EnableFullscreen { get; set; } = true;
         public int TargetScreenIndex { get; set; } = 0; // 0 = Primary / Default
 
+
         public int SplitMainDistance { get; set; } = 354;
         public int SplitContainer1Distance { get; set; } = 207;
 

@@ -55,12 +55,11 @@ namespace MediaControlApp.Forms
             splitMain = new SplitContainer();
             splitContainer1 = new SplitContainer();
             picPoster = new PictureBox();
+            treeShows = new TreeView();
             groupBox1 = new GroupBox();
             tableLayoutPanel1 = new TableLayoutPanel();
             lblCurrentUser = new Label();
             version = new Label();
-            treeShows = new TreeView();
-            txtEpisodeSummary = new RichTextBox();
             listEpisodes = new ListView();
             colName = new ColumnHeader();
             colSeason = new ColumnHeader();
@@ -68,6 +67,7 @@ namespace MediaControlApp.Forms
             colDuration = new ColumnHeader();
             colWatched = new ColumnHeader();
             colDateModified = new ColumnHeader();
+            txtEpisodeSummary = new RichTextBox();
             layoutBottomPanel = new TableLayoutPanel();
             flowLayoutPanel2 = new FlowLayoutPanel();
             btnCollapseAll = new Button();
@@ -132,14 +132,18 @@ namespace MediaControlApp.Forms
             // splitMain.Panel1
             // 
             splitMain.Panel1.Controls.Add(splitContainer1);
+            splitMain.Panel1MinSize = 327;
             // 
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(listEpisodes);
             splitMain.Panel2.Controls.Add(txtEpisodeSummary);
-            splitMain.Size = new Size(1231, 537);
-            splitMain.SplitterDistance = 353;
+            splitMain.Panel2.Controls.Add(layoutBottomPanel);
+            splitMain.Panel2MinSize = 900;
+            splitMain.Size = new Size(1231, 736);
+            splitMain.SplitterDistance = 327;
             splitMain.TabIndex = 0;
+            // 
             // 
             // splitContainer1
             // 
@@ -148,6 +152,8 @@ namespace MediaControlApp.Forms
             splitContainer1.Location = new Point(0, 0);
             splitContainer1.Name = "splitContainer1";
             splitContainer1.Orientation = Orientation.Horizontal;
+            splitContainer1.Panel1MinSize = 50;
+            splitContainer1.Panel2MinSize = 20;
             // 
             // splitContainer1.Panel1
             // 
@@ -157,7 +163,7 @@ namespace MediaControlApp.Forms
             // 
             splitContainer1.Panel2.Controls.Add(treeShows);
             splitContainer1.Panel2.Controls.Add(groupBox1);
-            splitContainer1.Size = new Size(353, 537);
+            splitContainer1.Size = new Size(327, 736);
             splitContainer1.SplitterDistance = 207;
             splitContainer1.TabIndex = 0;
             // 
@@ -168,18 +174,29 @@ namespace MediaControlApp.Forms
             picPoster.Location = new Point(0, 0);
             picPoster.Margin = new Padding(0);
             picPoster.Name = "picPoster";
-            picPoster.Size = new Size(353, 207);
+            picPoster.Size = new Size(327, 207);
             picPoster.SizeMode = PictureBoxSizeMode.Zoom;
             picPoster.TabIndex = 1;
             picPoster.TabStop = false;
+            // 
+            // treeShows
+            // 
+            treeShows.Dock = DockStyle.Fill;
+            treeShows.Font = new Font("Arial", 9F, FontStyle.Bold);
+            treeShows.HideSelection = false;
+            treeShows.Location = new Point(0, 0);
+            treeShows.Name = "treeShows";
+            treeShows.Size = new Size(327, 484);
+            treeShows.TabIndex = 0;
+            treeShows.AfterSelect += treeShows_AfterSelect;
             // 
             // groupBox1
             // 
             groupBox1.Controls.Add(tableLayoutPanel1);
             groupBox1.Dock = DockStyle.Bottom;
-            groupBox1.Location = new Point(0, 285);
+            groupBox1.Location = new Point(0, 484);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(353, 41);
+            groupBox1.Size = new Size(327, 41);
             groupBox1.TabIndex = 8;
             groupBox1.TabStop = false;
             // 
@@ -199,7 +216,6 @@ namespace MediaControlApp.Forms
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             tableLayoutPanel1.Size = new Size(314, 22);
             tableLayoutPanel1.TabIndex = 9;
-            tableLayoutPanel1.Paint += tableLayoutPanel1_Paint;
             // 
             // lblCurrentUser
             // 
@@ -221,26 +237,6 @@ namespace MediaControlApp.Forms
             version.TabIndex = 8;
             version.Text = "version";
             // 
-            // treeShows
-            // 
-            treeShows.Dock = DockStyle.Fill;
-            treeShows.Font = new Font("Arial", 9F, FontStyle.Bold);
-            treeShows.HideSelection = false;
-            treeShows.Location = new Point(0, 0);
-            treeShows.Name = "treeShows";
-            treeShows.Size = new Size(353, 285);
-            treeShows.TabIndex = 0;
-            treeShows.AfterSelect += treeShows_AfterSelect;
-            // 
-            // txtEpisodeSummary
-            // 
-            txtEpisodeSummary.Dock = DockStyle.Bottom;
-            txtEpisodeSummary.Location = new Point(0, 377);
-            txtEpisodeSummary.Name = "txtEpisodeSummary";
-            txtEpisodeSummary.Size = new Size(874, 160);
-            txtEpisodeSummary.TabIndex = 7;
-            txtEpisodeSummary.Text = "";
-            // 
             // listEpisodes
             // 
             listEpisodes.Columns.AddRange(new ColumnHeader[] { colName, colSeason, colEpisode, colDuration, colWatched, colDateModified });
@@ -250,7 +246,7 @@ namespace MediaControlApp.Forms
             listEpisodes.GridLines = true;
             listEpisodes.Location = new Point(0, 0);
             listEpisodes.Name = "listEpisodes";
-            listEpisodes.Size = new Size(874, 377);
+            listEpisodes.Size = new Size(900, 374);
             listEpisodes.TabIndex = 0;
             listEpisodes.UseCompatibleStateImageBehavior = false;
             listEpisodes.View = View.Details;
@@ -286,6 +282,15 @@ namespace MediaControlApp.Forms
             colDateModified.Text = "Date Modified";
             colDateModified.Width = 120;
             // 
+            // txtEpisodeSummary
+            // 
+            txtEpisodeSummary.Dock = DockStyle.Bottom;
+            txtEpisodeSummary.Location = new Point(0, 374);
+            txtEpisodeSummary.Name = "txtEpisodeSummary";
+            txtEpisodeSummary.Size = new Size(900, 160);
+            txtEpisodeSummary.TabIndex = 7;
+            txtEpisodeSummary.Text = "";
+            // 
             // layoutBottomPanel
             // 
             layoutBottomPanel.AutoSize = true;
@@ -299,12 +304,12 @@ namespace MediaControlApp.Forms
             layoutBottomPanel.Controls.Add(gbActions, 1, 1);
             layoutBottomPanel.Dock = DockStyle.Bottom;
             layoutBottomPanel.Font = new Font("Arial", 9F, FontStyle.Bold);
-            layoutBottomPanel.Location = new Point(0, 537);
+            layoutBottomPanel.Location = new Point(0, 534);
             layoutBottomPanel.Name = "layoutBottomPanel";
             layoutBottomPanel.RowCount = 2;
             layoutBottomPanel.RowStyles.Add(new RowStyle());
             layoutBottomPanel.RowStyles.Add(new RowStyle());
-            layoutBottomPanel.Size = new Size(1231, 199);
+            layoutBottomPanel.Size = new Size(900, 202);
             layoutBottomPanel.TabIndex = 1;
             // 
             // flowLayoutPanel2
@@ -321,7 +326,7 @@ namespace MediaControlApp.Forms
             flowLayoutPanel2.Dock = DockStyle.Fill;
             flowLayoutPanel2.Location = new Point(3, 3);
             flowLayoutPanel2.Name = "flowLayoutPanel2";
-            flowLayoutPanel2.Size = new Size(609, 59);
+            flowLayoutPanel2.Size = new Size(444, 62);
             flowLayoutPanel2.TabIndex = 0;
             // 
             // btnCollapseAll
@@ -369,7 +374,7 @@ namespace MediaControlApp.Forms
             // 
             OpenFileLocation.AutoSize = true;
             OpenFileLocation.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            OpenFileLocation.Location = new Point(380, 3);
+            OpenFileLocation.Location = new Point(3, 34);
             OpenFileLocation.Name = "OpenFileLocation";
             OpenFileLocation.Size = new Size(121, 25);
             OpenFileLocation.TabIndex = 3;
@@ -383,7 +388,7 @@ namespace MediaControlApp.Forms
             BtnCheckTVMAZE.BackgroundImageLayout = ImageLayout.Center;
             BtnCheckTVMAZE.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             BtnCheckTVMAZE.Image = Media_Status.Properties.Resources.tvm_logo;
-            BtnCheckTVMAZE.Location = new Point(3, 34);
+            BtnCheckTVMAZE.Location = new Point(130, 34);
             BtnCheckTVMAZE.Name = "BtnCheckTVMAZE";
             BtnCheckTVMAZE.Size = new Size(116, 22);
             BtnCheckTVMAZE.TabIndex = 5;
@@ -395,7 +400,7 @@ namespace MediaControlApp.Forms
             BtnCheckIMDb.BackgroundImageLayout = ImageLayout.Center;
             BtnCheckIMDb.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             BtnCheckIMDb.Image = Media_Status.Properties.Resources.IMDb_Logo;
-            BtnCheckIMDb.Location = new Point(125, 34);
+            BtnCheckIMDb.Location = new Point(252, 34);
             BtnCheckIMDb.Name = "BtnCheckIMDb";
             BtnCheckIMDb.Size = new Size(100, 20);
             BtnCheckIMDb.TabIndex = 4;
@@ -412,9 +417,9 @@ namespace MediaControlApp.Forms
             flowLayoutPanel3.Controls.Add(btnPlay);
             flowLayoutPanel3.Controls.Add(btnStop);
             flowLayoutPanel3.Dock = DockStyle.Fill;
-            flowLayoutPanel3.Location = new Point(618, 3);
+            flowLayoutPanel3.Location = new Point(453, 3);
             flowLayoutPanel3.Name = "flowLayoutPanel3";
-            flowLayoutPanel3.Size = new Size(610, 59);
+            flowLayoutPanel3.Size = new Size(444, 62);
             flowLayoutPanel3.TabIndex = 1;
             // 
             // btnDelete
@@ -498,9 +503,9 @@ namespace MediaControlApp.Forms
             flowLayoutPanel1.Controls.Add(BtnAutoRename);
             flowLayoutPanel1.Controls.Add(btnSupport);
             flowLayoutPanel1.Dock = DockStyle.Fill;
-            flowLayoutPanel1.Location = new Point(3, 68);
+            flowLayoutPanel1.Location = new Point(3, 71);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(609, 128);
+            flowLayoutPanel1.Size = new Size(444, 128);
             flowLayoutPanel1.TabIndex = 2;
             // 
             // btnoptions
@@ -586,9 +591,9 @@ namespace MediaControlApp.Forms
             gbActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             gbActions.Controls.Add(flowActionsInner);
             gbActions.Dock = DockStyle.Fill;
-            gbActions.Location = new Point(618, 68);
+            gbActions.Location = new Point(453, 71);
             gbActions.Name = "gbActions";
-            gbActions.Size = new Size(610, 128);
+            gbActions.Size = new Size(444, 128);
             gbActions.TabIndex = 3;
             gbActions.TabStop = false;
             gbActions.Text = "Actions";
@@ -602,7 +607,7 @@ namespace MediaControlApp.Forms
             flowActionsInner.Dock = DockStyle.Fill;
             flowActionsInner.Location = new Point(3, 17);
             flowActionsInner.Name = "flowActionsInner";
-            flowActionsInner.Size = new Size(604, 108);
+            flowActionsInner.Size = new Size(438, 108);
             flowActionsInner.TabIndex = 0;
             // 
             // gb_action_setting2
@@ -644,7 +649,7 @@ namespace MediaControlApp.Forms
             gb_action_setting1.Controls.Add(chkFullscreen);
             gb_action_setting1.Controls.Add(chkSubtitles);
             gb_action_setting1.Controls.Add(cmbScreens);
-            gb_action_setting1.Location = new Point(156, 3);
+            gb_action_setting1.Location = new Point(3, 111);
             gb_action_setting1.Name = "gb_action_setting1";
             gb_action_setting1.Size = new Size(284, 102);
             gb_action_setting1.TabIndex = 6;
@@ -691,7 +696,6 @@ namespace MediaControlApp.Forms
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(1231, 736);
             Controls.Add(splitMain);
-            Controls.Add(layoutBottomPanel);
             Icon = (Icon)resources.GetObject("$this.Icon");
             MinimumSize = new Size(1120, 775);
             Name = "MainForm";
@@ -701,6 +705,7 @@ namespace MediaControlApp.Forms
             Load += MainForm_Load;
             splitMain.Panel1.ResumeLayout(false);
             splitMain.Panel2.ResumeLayout(false);
+            splitMain.Panel2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
             splitMain.ResumeLayout(false);
             splitContainer1.Panel1.ResumeLayout(false);
@@ -727,7 +732,6 @@ namespace MediaControlApp.Forms
             gb_action_setting1.ResumeLayout(false);
             gb_action_setting1.PerformLayout();
             ResumeLayout(false);
-            PerformLayout();
         }
 
         private Button BtnCheckIMDb;
