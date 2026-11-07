@@ -432,7 +432,18 @@ public static class EpisodeRenamer
                                 renamedCount++;
                             }
                         }
+
+
+                        RenameParentFolderAndUpdatePaths(
+                            previewForm.ApprovedItems,
+                            targetName,
+                            isFilmSelection,
+                            commonJunkRegex);
+
                         saveAndMergeState().Wait();
+
+
+
                     });
 
                     refreshAll();
@@ -459,6 +470,80 @@ public static class EpisodeRenamer
             parentForm.Cursor = Cursors.Default;
         }
     }
+
+
+
+
+    private static void RenameParentFolderAndUpdatePaths(
+    List<AutoRenamePreviewItem> items,
+    string targetName,
+    bool isFilmSelection,
+    string commonJunkRegex)
+    {
+        if (items == null || items.Count == 0)
+            return;
+
+        string folder = Path.GetDirectoryName(items[0].NewFullPath);
+
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+            return;
+
+        string parentFolder = Directory.GetParent(folder)?.FullName;
+
+        if (string.IsNullOrWhiteSpace(parentFolder))
+            return;
+
+        string cleanFolderName;
+
+        if (isFilmSelection)
+        {
+            string currentFolderName = Path.GetFileName(folder);
+
+            cleanFolderName = currentFolderName.Replace(".", " ");
+            cleanFolderName = Regex.Replace(cleanFolderName, commonJunkRegex, "", RegexOptions.IgnoreCase);
+            cleanFolderName = Regex.Replace(cleanFolderName, @"\(\d{4}\)", "");
+            cleanFolderName = Regex.Replace(cleanFolderName, @"\b(19|20)\d{2}\b", "");
+            cleanFolderName = Regex.Replace(cleanFolderName, @"[\.\-_]+", " ");
+            cleanFolderName = Regex.Replace(cleanFolderName, @"\s+", " ").Trim();
+        }
+        else
+        {
+            cleanFolderName = Regex.Replace(
+                targetName,
+                @"\b(19|20)\d{2}\b",
+                "").Trim();
+
+            cleanFolderName = Regex.Replace(cleanFolderName, @"\s+", " ");
+        }
+
+        if (string.IsNullOrWhiteSpace(cleanFolderName))
+            return;
+
+        string newFolderPath = Path.Combine(parentFolder, cleanFolderName);
+
+        if (folder.Equals(newFolderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (Directory.Exists(newFolderPath))
+            return;
+
+        Directory.Move(folder, newFolderPath);
+
+        foreach (var item in items)
+        {
+            string fileName = Path.GetFileName(item.NewFullPath);
+
+            string updatedPath = Path.Combine(newFolderPath, fileName);
+
+            item.NewFullPath = updatedPath;
+            item.MediaItem.FilePath = updatedPath;
+            item.MediaItem.CacheParsed();
+        }
+    }
+
+
+
+
 
     private static async Task RevertLastRenameAsync(
         Form parentForm,

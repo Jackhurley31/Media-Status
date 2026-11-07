@@ -1026,9 +1026,13 @@ namespace MediaControlApp.Forms
         private string GetFilmTitle(MediaItem f)
         {
             string name = f.CachedSeriesName;
+
+            // If CachedSeriesName is generic or captured a genre folder name rather than the file title,
+            // fall back to the filename where the actual movie title and year reside.
             if (string.IsNullOrWhiteSpace(name) ||
                 name.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
-                name.Equals("Film", StringComparison.OrdinalIgnoreCase))
+                name.Equals("Film", StringComparison.OrdinalIgnoreCase) ||
+                !Regex.IsMatch(Path.GetFileNameWithoutExtension(f.FilePath), Regex.Escape(name), RegexOptions.IgnoreCase))
             {
                 return Path.GetFileNameWithoutExtension(f.FilePath);
             }
@@ -1037,8 +1041,13 @@ namespace MediaControlApp.Forms
 
         private string GetFilmYearGroup(MediaItem f)
         {
-            string name = GetFilmTitle(f);
-            var match = System.Text.RegularExpressions.Regex.Match(name, @"\b(19\d{2}|20\d{2})\b");
+            string title = GetFilmTitle(f);
+            string fileName = Path.GetFileNameWithoutExtension(f.FilePath);
+
+            // Search across the title, filename, and file path for a 4-digit year (1900–2099)
+            string searchTarget = $"{title} {fileName} {f.FilePath}";
+            var match = System.Text.RegularExpressions.Regex.Match(searchTarget, @"\b(19\d{2}|20\d{2})\b");
+
             return match.Success ? match.Value : "Other";
         }
 
@@ -1082,40 +1091,68 @@ namespace MediaControlApp.Forms
         {
             if (e.Node == null) return;
 
-            // 1. Walk up to the root node to check the top-level section
+            string nodeText = e.Node.Text.Replace("★ ", "").Trim();
+
+            // 1. Check if this node belongs to a Film branch anywhere in its ancestry 
+            bool isFilmBranch = false;
+            TreeNode checkNode = e.Node;
+            while (checkNode != null)
+            {
+                string checkName = checkNode.Text.Trim();
+                if (checkName.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                    checkName.Equals("Film", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (checkNode != e.Node)
+                    {
+                        isFilmBranch = true;
+                    }
+                    break;
+                }
+                checkNode = checkNode.Parent;
+            }
+
+            // Walk up to the absolute root node to check the top-level section
             TreeNode showNode = e.Node;
             while (showNode.Parent != null)
             {
                 showNode = showNode.Parent;
             }
-
             string rootName = showNode.Text.Trim();
 
-            // 2. Ignore the main "Films" category entirely
-            if (rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
+            // 2. Handle Film nodes (whether under Films, Watched, or Continue)
+            if (isFilmBranch || rootName.Equals("Films", StringComparison.OrdinalIgnoreCase))
             {
-                string nodeText = e.Node.Text.Replace("★ ", "").Trim();
+                bool isContainer = e.Node.Tag == null ||
+                    nodeText.Equals("Other", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("Film", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("Favorites", StringComparison.OrdinalIgnoreCase) ||
+                    nodeText.Equals("★ Favorites", StringComparison.OrdinalIgnoreCase) ||
+                    Regex.IsMatch(nodeText, @"^(19|20)\d{2}$");
 
-                if (e.Node.Tag == null || nodeText.Equals("Other", StringComparison.OrdinalIgnoreCase))
+                if (isContainer)
                 {
                     _posterCancellationTokenSource?.Cancel();
                     picPoster.Image = null;
+                    if (txtEpisodeSummary != null)
+                    {
+                        txtEpisodeSummary.Clear();
+                        txtEpisodeSummary.Visible = false;
+                    }
                     return;
                 }
 
-                if (e.Node.Tag is List<MediaItem> filmList && filmList.Count > 0)
-                {
-                    string filmTitle = nodeText;
-                    // Run asynchronously without blocking the UI thread selection response
-                    _ = LoadAutoFilmPosterAsync(filmTitle);
-                    return;
-                }
+                // Trigger movie poster loading (the list selection handles the summary text now)
+                _ = LoadAutoFilmPosterAsync(nodeText);
+                return;
             }
 
-            // 3. Extract the clean show title
+            // 3. Extract the clean show title for TV Shows
             string showTitle = rootName.Replace("★ ", "").Trim();
 
-            // 4. Handle smart/dynamic folders (Continue, Watched, Recently added)
+            // 4. Handle smart/dynamic folders (Continue, Watched, Recently added) for TV Shows
             if (rootName.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
                 rootName.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
                 rootName.Equals("Recently added", StringComparison.OrdinalIgnoreCase))
@@ -1152,7 +1189,7 @@ namespace MediaControlApp.Forms
                 return;
             }
 
-            // Fire asynchronously so tree navigation stays instant and responsive
+            // Fire asynchronously for TV Shows
             _ = LoadAutoOnlinePosterAsync(showTitle);
         }
 
@@ -1183,7 +1220,19 @@ namespace MediaControlApp.Forms
                         ? (selectedMedia.Duration.Hours > 0 ? selectedMedia.Duration.ToString(@"h\:mm\:ss") : selectedMedia.Duration.ToString(@"m\:ss"))
                         : "--:--";
 
-                    string cleanTitle = selectedMedia.CachedSeriesName ?? Path.GetFileNameWithoutExtension(selectedMedia.FilePath);
+                    // Fix film title resolution: don't use CachedSeriesName ("Films") for movies
+                    string cleanTitle;
+                    if (isFilm)
+                    {
+                        var titleProp = selectedMedia.GetType().GetProperty("Title")?.GetValue(selectedMedia) as string;
+                        var nameProp = selectedMedia.GetType().GetProperty("Name")?.GetValue(selectedMedia) as string;
+                        cleanTitle = !string.IsNullOrEmpty(titleProp) ? titleProp : (!string.IsNullOrEmpty(nameProp) ? nameProp : Path.GetFileNameWithoutExtension(selectedMedia.FilePath));
+                    }
+                    else
+                    {
+                        cleanTitle = selectedMedia.CachedSeriesName ?? Path.GetFileNameWithoutExtension(selectedMedia.FilePath);
+                    }
+
                     // Clean up release years or tags for better API matching
                     cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\b(19|20)\d{2}\b", "");
                     cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|bluray|web-dl|x264|x265)", "").Trim();
@@ -1211,13 +1260,24 @@ namespace MediaControlApp.Forms
 
                         try
                         {
+                            // Extract a 4-digit year from the filename or path if available to prevent API mismatches
+                            string yearMatchStr = string.Empty;
+                            var yearRegexMatch = System.Text.RegularExpressions.Regex.Match($"{selectedMedia.FilePath} {cleanTitle}", @"\b(19\d{2}|20\d{2})\b");
+                            if (yearRegexMatch.Success)
+                            {
+                                yearMatchStr = $"&y={yearRegexMatch.Value}";
+                            }
+
+                            // Clean up release years from the api search string so OMDb matches cleanly
+                            string apiSearchTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\b(19|20)\d{2}\b", "").Trim();
+
                             using (HttpClient client = new HttpClient())
                             {
                                 client.Timeout = TimeSpan.FromSeconds(4);
                                 client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaControlApp/1.0");
 
-                                // Free OMDb API endpoint (using public key / open service format)
-                                string omdbUrl = $"https://www.omdbapi.com/?t={Uri.EscapeDataString(cleanTitle)}&apikey=trilogy";
+                                // Free OMDb API endpoint with optional year parameter for precise targeting
+                                string omdbUrl = $"https://www.omdbapi.com/?t={Uri.EscapeDataString(apiSearchTitle)}{yearMatchStr}&apikey=trilogy";
                                 HttpResponseMessage response = await client.GetAsync(omdbUrl);
 
                                 if (response.IsSuccessStatusCode)
@@ -1275,7 +1335,7 @@ namespace MediaControlApp.Forms
                         // Footer
                         txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
                         txtEpisodeSummary.SelectionColor = mutedColor;
-                        txtEpisodeSummary.AppendText($"Duration: {durationStr}   |   File: {Path.GetFileName(selectedMedia.FilePath)}");
+                        txtEpisodeSummary.AppendText($"Duration: {durationStr}    |    File: {Path.GetFileName(selectedMedia.FilePath)}");
 
                         txtEpisodeSummary.Visible = true;
                         return;
@@ -1386,7 +1446,7 @@ namespace MediaControlApp.Forms
 
                     txtEpisodeSummary.SelectionFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
                     txtEpisodeSummary.SelectionColor = mutedColor;
-                    txtEpisodeSummary.AppendText($"Duration: {durationStr}   |   File: {Path.GetFileName(selectedMedia.FilePath)}");
+                    txtEpisodeSummary.AppendText($"Duration: {durationStr}    |    File: {Path.GetFileName(selectedMedia.FilePath)}");
 
                     txtEpisodeSummary.Visible = true;
                 }
@@ -1786,6 +1846,25 @@ namespace MediaControlApp.Forms
                 return;
             }
 
+            // 0. Guard clause: Clear poster immediately if a system category or year folder is selected
+            string trimmed = mediaPathOrTitle.Replace("★ ", "").Trim();
+            bool isSystemOrYear =
+                trimmed.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Recently Added", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Recently added", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Film", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Other", StringComparison.OrdinalIgnoreCase) ||
+                Regex.IsMatch(trimmed, @"^(19|20)\d{2}$");
+
+            if (isSystemOrYear)
+            {
+                _posterCancellationTokenSource?.Cancel();
+                picPoster.Image = null;
+                return;
+            }
+
             try
             {
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -1844,8 +1923,46 @@ namespace MediaControlApp.Forms
                     catch { }
                 }
 
-                // 2. Clean Film Title
-                string sourceNameToClean = !string.IsNullOrEmpty(targetDir) ? new DirectoryInfo(targetDir).Name : Path.GetFileNameWithoutExtension(resolvedPath);
+                // 2. Extract and clean Film Title (Robust upward climbing for any wrapper or category folder)
+                string sourceNameToClean = string.Empty;
+                if (!string.IsNullOrEmpty(targetDir))
+                {
+                    DirectoryInfo dirInfo = new DirectoryInfo(targetDir);
+                    while (dirInfo != null && dirInfo.Parent != null)
+                    {
+                        string dirName = dirInfo.Name;
+
+                        // Check if this folder is a category header, system root, or 4-digit year folder
+                        bool isIgnoredFolder =
+                            Regex.IsMatch(dirName, @"^(19|20)\d{2}$") ||
+                            dirName.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Recently Added", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Recently added", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Film", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Favorites", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("★ Favorites", StringComparison.OrdinalIgnoreCase) ||
+                            dirName.Equals("Other", StringComparison.OrdinalIgnoreCase);
+
+                        // If it's a wrapper/category folder, step up to the parent directory
+                        if (isIgnoredFolder)
+                        {
+                            dirInfo = dirInfo.Parent;
+                        }
+                        else
+                        {
+                            // Stop climbing as soon as we hit a non-ignored folder (the actual movie folder)
+                            break;
+                        }
+                    }
+                    sourceNameToClean = dirInfo?.Name ?? Path.GetFileNameWithoutExtension(resolvedPath);
+                }
+                else
+                {
+                    sourceNameToClean = Path.GetFileNameWithoutExtension(resolvedPath);
+                }
+
                 string cleanTitle = System.Text.RegularExpressions.Regex.Replace(sourceNameToClean, @"\b(19|20)\d{2}\b", "");
                 cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|hrhdtv|web-dl|bluray|x264|x265)", "");
                 cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[\(\[].*?[\)\]]", "");
@@ -4614,9 +4731,9 @@ namespace MediaControlApp.Forms
 
             string nodeText = node.Text.Replace("★ ", "").Trim();
             string[] restrictedHeaders = {
-        "Top", "Continue", "Watched", "Recently added", "Recently Added",
-        "Films", "Film", "Other"
-    };
+                "Top", "Continue", "Watched", "Recently added", "Recently Added",
+                "Films", "Film", "Other"
+            };
 
             bool isRestrictedHeader = Array.Exists(restrictedHeaders, r => r.Equals(nodeText, StringComparison.OrdinalIgnoreCase));
             bool isYearHeader = Regex.IsMatch(nodeText, @"^(19|20)\d{2}$");
@@ -4628,9 +4745,9 @@ namespace MediaControlApp.Forms
             }
 
             // 1. If Tag contains a list of MediaItems (Season node or Film group node)
-            if (node.Tag is List<MediaItem> items && items.Count > 0)
+            if (node.Tag is List<MediaItem> itemsList && itemsList.Count > 0)
             {
-                var first = items[0];
+                var first = itemsList[0];
                 string name = first.CachedSeriesName;
 
                 if (string.IsNullOrWhiteSpace(name) ||
@@ -4651,6 +4768,30 @@ namespace MediaControlApp.Forms
                 if (!Array.Exists(restrictedHeaders, r => r.Equals(name, StringComparison.OrdinalIgnoreCase)))
                 {
                     return name;
+                }
+            }
+
+            // 3. If Tag is null (Parent Show node), inspect child season nodes to extract the series name
+            foreach (TreeNode child in node.Nodes)
+            {
+                if (child.Tag is List<MediaItem> childList && childList.Count > 0)
+                {
+                    string name = childList[0].CachedSeriesName;
+                    if (!string.IsNullOrWhiteSpace(name) && !Array.Exists(restrictedHeaders, r => r.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return name;
+                    }
+                }
+            }
+
+            // 4. Fallback: Search the global items repository for a matching series name
+            if (items != null)
+            {
+                var matchingItem = items.FirstOrDefault(i =>
+                    string.Equals(i.CachedSeriesName, nodeText, StringComparison.OrdinalIgnoreCase));
+                if (matchingItem != null && !string.IsNullOrWhiteSpace(matchingItem.CachedSeriesName))
+                {
+                    return matchingItem.CachedSeriesName;
                 }
             }
 
@@ -4675,15 +4816,13 @@ namespace MediaControlApp.Forms
                 targetToClean = ResolveTargetTitleFromNode(treeShows.SelectedNode);
             }
 
-            // Explicitly block restricted headers or null values from opening a browser search
             string[] restrictedHeaders = { "Top", "Continue", "Watched", "Recently added", "Recently Added", "Films", "Film", "Other" };
             if (string.IsNullOrWhiteSpace(targetToClean) || Array.Exists(restrictedHeaders, r => r.Equals(targetToClean.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
-                return; // Silently abort if a category header is selected
+                return;
             }
 
             string cleanTitle = CleanMediaTitle(targetToClean);
-
             if (string.IsNullOrWhiteSpace(cleanTitle)) return;
 
             string searchUrl = $"https://www.imdb.com/find/?q={Uri.EscapeDataString(cleanTitle)}";
@@ -4702,8 +4841,6 @@ namespace MediaControlApp.Forms
             }
         }
 
-
-
         private void BtnCheckTVMAZE_Click(object sender, EventArgs e)
         {
             string targetToClean = null;
@@ -4719,15 +4856,13 @@ namespace MediaControlApp.Forms
                 targetToClean = ResolveTargetTitleFromNode(treeShows.SelectedNode);
             }
 
-            // Explicitly block restricted headers or null values from opening a browser search
             string[] restrictedHeaders = { "Top", "Continue", "Watched", "Recently added", "Recently Added", "Films", "Film", "Other" };
             if (string.IsNullOrWhiteSpace(targetToClean) || Array.Exists(restrictedHeaders, r => r.Equals(targetToClean.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
-                return; // Silently abort if a category header is selected
+                return;
             }
 
             string cleanTitle = CleanMediaTitle(targetToClean);
-
             if (string.IsNullOrWhiteSpace(cleanTitle)) return;
 
             string searchUrl = $"https://www.tvmaze.com/search?q={Uri.EscapeDataString(cleanTitle)}";
@@ -4748,8 +4883,7 @@ namespace MediaControlApp.Forms
 
 
 
-
-
+      
         private string CleanMediaTitle(string inputPathOrName)
         {
             if (string.IsNullOrWhiteSpace(inputPathOrName)) return string.Empty;
@@ -5166,11 +5300,14 @@ namespace MediaControlApp.Forms
             }
         }
 
+
+
+
         private void btnRandomPick_Click(object sender, EventArgs e)
         {
-            if (items == null || items.Count == 0)
+            if (treeShows.Nodes.Count == 0)
             {
-                DarkMessageBox.Show(this, "Your media library is empty.", "Random Picker", MessageBoxButtons.OK, darkMode);
+                DarkMessageBox.Show(this, "Your media tree is empty.", "Random Picker", MessageBoxButtons.OK, darkMode);
                 return;
             }
 
@@ -5178,55 +5315,77 @@ namespace MediaControlApp.Forms
             string choice = ShowRandomChoiceDialog();
             if (string.IsNullOrEmpty(choice)) return; // Canceled
 
-            // 2. Filter items based on choice
-            List<MediaItem> pool = new();
-            if (choice == "Film")
+            // 2. Recursively gather all eligible leaf/show nodes from the entire TreeView structure
+            List<TreeNode> eligibleNodes = new List<TreeNode>();
+            foreach (TreeNode topNode in treeShows.Nodes)
             {
-                pool = items.Where(IsFilmItem).ToList();
-            }
-            else if (choice == "Show")
-            {
-                pool = items.Where(i => !IsFilmItem(i)).ToList();
-            }
-            else // "Either"
-            {
-                pool = items.ToList();
+                CollectEligiblePickerNodes(topNode, choice, eligibleNodes);
             }
 
-            if (pool.Count == 0)
+            if (eligibleNodes.Count == 0)
             {
                 DarkMessageBox.Show(this, $"No items found for category: {choice}", "Random Picker", MessageBoxButtons.OK, darkMode);
                 return;
             }
 
-            // 3. Group by distinct title so it picks a whole show or film (not a random individual episode)
-            var uniqueTitles = pool
-    .Select(i => IsFilmItem(i)
-    ? GetFilmTitle(i)
-    : i.CachedSeriesName)
-    .Where(n => !string.IsNullOrWhiteSpace(n))
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToList();
+            // 3. Pick one random node from our validated list
+            TreeNode selectedNode = eligibleNodes[new Random().Next(eligibleNodes.Count)];
 
-
-            if (uniqueTitles.Count == 0) return;
-
-            // 4. Pick one at random
-            string randomTitle = uniqueTitles[new Random().Next(uniqueTitles.Count)];
-
-            // 5. Find and select the corresponding node in treeShows
-            TreeNode targetNode = FindNodeByTitle(treeShows.Nodes, randomTitle);
-            if (targetNode != null)
+            // 4. Select and focus the node in the TreeView
+            if (selectedNode != null)
             {
-                treeShows.SelectedNode = targetNode;
-                targetNode.EnsureVisible();
+                treeShows.SelectedNode = selectedNode;
+                selectedNode.EnsureVisible();
                 treeShows.Focus();
             }
             else
             {
-                DarkMessageBox.Show(this, $"Could not locate '{randomTitle}' in the tree view.", "Random Picker", MessageBoxButtons.OK, darkMode);
+                DarkMessageBox.Show(this, "Could not select the randomly chosen item.", "Random Picker", MessageBoxButtons.OK, darkMode);
             }
         }
+
+        // Recursive helper to traverse down through year folders, categories, and shows
+        private void CollectEligiblePickerNodes(TreeNode node, string choice, List<TreeNode> eligibleNodes)
+        {
+            if (node == null) return;
+
+            if (MatchesPickerCategory(node, choice))
+            {
+                eligibleNodes.Add(node);
+            }
+
+            foreach (TreeNode childNode in node.Nodes)
+            {
+                CollectEligiblePickerNodes(childNode, choice, eligibleNodes);
+            }
+        }
+
+        private bool MatchesPickerCategory(TreeNode node, string choice)
+        {
+            if (node == null) return false;
+
+            string text = node.Text.Replace("★ ", "").Trim();
+
+            // Exclude static category headers or year folders from being picked directly
+            string[] headers = { "Top", "Continue", "Watched", "Recently added", "Recently Added", "Films", "Film", "Other", "Favorites", "★ Favorites" };
+            if (Array.Exists(headers, h => h.Equals(text, StringComparison.OrdinalIgnoreCase)) || Regex.IsMatch(text, @"^(19|20)\d{2}$"))
+            {
+                return false;
+            }
+
+            bool isFilmNode = node.Tag is List<MediaItem> mediaList && mediaList.Any(IsFilmItem) ||
+                              node.FullPath.Contains(@"\Films\", StringComparison.OrdinalIgnoreCase) ||
+                              node.FullPath.Contains(@"\Film\", StringComparison.OrdinalIgnoreCase);
+
+            if (choice == "Film") return isFilmNode;
+            if (choice == "Show") return !isFilmNode;
+
+            return true; // "Either"
+        }
+
+
+
+
 
         private bool IsFilmItem(MediaItem item)
         {
