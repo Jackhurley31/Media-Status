@@ -401,13 +401,60 @@ namespace MediaControlApp.Forms
             // If it's a rooted path (UNC or absolute drive like C:\), return it as-is
             if (Path.IsPathRooted(filePath))
             {
-                return filePath;
+                return RemapToRoot(filePath);
             }
 
             // Otherwise, it's a relative path inside RootFolder
             string cleanRelativePath = filePath.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             return Path.Combine(RootFolder, cleanRelativePath);
         }
+
+
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _pathRemapCache
+    = new(StringComparer.OrdinalIgnoreCase);
+
+        private string RemapToRoot(string path)
+        {
+            if (_pathRemapCache.TryGetValue(path, out var cached))
+                return cached;
+
+            // If the original path exists just use it immediately.
+            try
+            {
+                if (File.Exists(path) || Directory.Exists(path))
+                {
+                    _pathRemapCache[path] = path;
+                    return path;
+                }
+            }
+            catch { }
+
+            string result = path;
+
+            try
+            {
+                var parts = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+                int startIndex = Math.Max(parts.Length - 4, 1);
+
+                for (int i = startIndex; i < parts.Length; i++)
+                {
+                    string candidate = Path.Combine(RootFolder, string.Join("\\", parts.Skip(i)));
+
+                    if (File.Exists(candidate) || Directory.Exists(candidate))
+                    {
+                        result = candidate;
+                        break;
+                    }
+                }
+            }
+            catch { }
+
+            _pathRemapCache[path] = result;
+            return result;
+        }
+
 
 
 
@@ -505,35 +552,69 @@ namespace MediaControlApp.Forms
         {
             var settings = _userSettings ?? AppConfig.Load();
 
-            if (!string.IsNullOrWhiteSpace(settings.CustomPlayerPath) && File.Exists(settings.CustomPlayerPath))
+            // 1. Custom path from Options, 2. auto-detect
+            string vlcPath = null;
+            if (!string.IsNullOrWhiteSpace(settings.CustomPlayerPath) && File.Exists(settings.CustomPlayerPath.Trim()))
+                vlcPath = settings.CustomPlayerPath.Trim();
+            else
+                vlcPath = FindVlcPath();
+
+            if (vlcPath == null)
             {
-                string safePath = filePath.Replace("\"", "\\\"");
-                string startTimeArg = startSeconds > 5 ? $" --start-time={Math.Floor(startSeconds)}" : "";
-                string httpArgs = " --extraintf=http --http-password=mediacontrol --play-and-exit";
+                MessageBox.Show(
+                    "VLC was not found on this computer.\nSet the VLC path in Options.",
+                    "VLC not found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
 
-                string subArgs = settings.EnableSubtitles ? " --sub-track=0" : " --no-sub-autodetect --sub-track=-1";
-                string darkPaletteArg = settings.DarkMode ? " --qt-dark-palette" : "";
-                string fullscreenArg = settings.EnableFullscreen ? " --fullscreen" : "";
-                string screenArg = "";
+            string safePath = filePath.Replace("\"", "\\\"");
+            string startTimeArg = startSeconds > 5 ? $" --start-time={Math.Floor(startSeconds)}" : "";
+            string httpArgs = " --extraintf=http --http-password=mediacontrol --play-and-exit";
 
-                // DO NOT SORT. Match native Screen.AllScreens exactly as the UI does.
-                if (settings.TargetScreenIndex >= 0 && settings.TargetScreenIndex < Screen.AllScreens.Length)
+            string subArgs = settings.EnableSubtitles ? " --sub-track=0" : " --no-sub-autodetect --sub-track=-1";
+            string darkPaletteArg = settings.DarkMode ? " --qt-dark-palette" : "";
+            string fullscreenArg = settings.EnableFullscreen ? " --fullscreen" : "";
+            string screenArg = "";
+
+            // DO NOT SORT. Match native Screen.AllScreens exactly as the UI does.
+            if (settings.TargetScreenIndex >= 0 && settings.TargetScreenIndex < Screen.AllScreens.Length)
+            {
+                var targetScreen = Screen.AllScreens[settings.TargetScreenIndex];
+                int winDispNumber = GetDisplayNumber(targetScreen.DeviceName);
+
+                screenArg = $" --video-x={targetScreen.Bounds.X} --video-y={targetScreen.Bounds.Y}" +
+                            $" --qt-fullscreen-screennumber={winDispNumber}" +
+                            $" --directx-device=\\\\.\\DISPLAY{winDispNumber}";
+            }
+
+            return new ProcessStartInfo
+            {
+                FileName = vlcPath,
+                Arguments = $"\"{safePath}\"{fullscreenArg}{screenArg}{startTimeArg}{httpArgs}{subArgs}{darkPaletteArg}",
+                UseShellExecute = false,
+                CreateNoWindow = false
+            };
+        }
+
+        private string FindVlcPath()
+        {
+            string[] candidates =
+            {
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"VideoLAN\VLC\vlc.exe"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"VideoLAN\VLC\vlc.exe"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\VideoLAN\VLC\vlc.exe")
+    };
+            foreach (var c in candidates)
+                if (File.Exists(c)) return c;
+
+            foreach (var hive in new[] { Microsoft.Win32.Registry.LocalMachine, Microsoft.Win32.Registry.CurrentUser })
+            {
+                using var key = hive.OpenSubKey(@"SOFTWARE\VideoLAN\VLC");
+                if (key?.GetValue("InstallDir") is string dir)
                 {
-                    var targetScreen = Screen.AllScreens[settings.TargetScreenIndex];
-                    int winDispNumber = GetDisplayNumber(targetScreen.DeviceName);
-
-                    screenArg = $" --video-x={targetScreen.Bounds.X} --video-y={targetScreen.Bounds.Y}" +
-                                $" --qt-fullscreen-screennumber={winDispNumber}" +
-                                $" --directx-device=\\\\.\\DISPLAY{winDispNumber}";
+                    string p = Path.Combine(dir, "vlc.exe");
+                    if (File.Exists(p)) return p;
                 }
-
-                return new ProcessStartInfo
-                {
-                    FileName = settings.CustomPlayerPath,
-                    Arguments = $"\"{safePath}\"{fullscreenArg}{screenArg}{startTimeArg}{httpArgs}{subArgs}{darkPaletteArg}",
-                    UseShellExecute = false,
-                    CreateNoWindow = false
-                };
             }
             return null;
         }
@@ -2230,7 +2311,7 @@ namespace MediaControlApp.Forms
             {
                 bool isFav = ep.FavouriteByUser != null && ep.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool f) && f;
                 string displayName = isFav ? "★ " + ep.FileName : ep.FileName;
-                string fullPath = BuildFullPath(ep.FilePath);
+                string fullPath = ep.FilePath;
 
                 totalDuration += ep.Duration;
                 if (!ep.IsWatched(AppConfig.CurrentUser))
@@ -2257,14 +2338,16 @@ namespace MediaControlApp.Forms
                 li.SubItems.Add(GetWatchedDisplay(ep, isPartial));
 
                 // 5: colDateModified (UK dd/MM/yyyy)
-                DateTime dt = ep.GetDateModified(fullPath);
-                string dateUkDisplay = dt != DateTime.MinValue ? dt.ToString("dd/MM/yyyy") : "N/A";
+                DateTime dt = ep.CachedDateModified;
+                string dateUkDisplay = dt != DateTime.MinValue
+                    ? dt.ToString("dd/MM/yyyy")
+                    : "N/A";
                 li.SubItems.Add(dateUkDisplay);
 
                 li.Tag = ep;
                 listEpisodes.Items.Add(li);
 
-                if (ep.Duration == TimeSpan.Zero && File.Exists(fullPath))
+                if (ep.Duration == TimeSpan.Zero)
                 {
                     itemsNeedingDuration.Add((li, ep, fullPath));
                 }
@@ -2275,7 +2358,7 @@ namespace MediaControlApp.Forms
             var cacheDict = new Dictionary<string, TimeSpan>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in cachedItems)
             {
-                string key = !string.IsNullOrEmpty(item.FilePath) ? BuildFullPath(item.FilePath) : "";
+                string key = item.FilePath;
                 if (!string.IsNullOrEmpty(key))
                 {
                     cacheDict[key] = item.Duration;
@@ -2312,8 +2395,10 @@ namespace MediaControlApp.Forms
                 {
                     bool updatedAny = false;
 
-                    foreach (var (item, ep, fullPath) in itemsNeedingDuration)
+                    foreach (var (item, ep, _) in itemsNeedingDuration)
                     {
+                        string fullPath = BuildFullPath(ep.FilePath);
+
                         TimeSpan dur = GetVideoDuration(fullPath);
                         if (dur > TimeSpan.Zero)
                         {
@@ -3737,7 +3822,12 @@ namespace MediaControlApp.Forms
                     });
 
                     string fullPath = BuildFullPath(ep.FilePath);
-                    if (!File.Exists(fullPath)) continue;
+                    if (!File.Exists(fullPath))
+                    {
+                        MessageBox.Show($"Can't reach file:\n{fullPath}", "File not found",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        break;
+                    }
 
                     string currentUser = AppConfig.CurrentUser;
                     if (string.IsNullOrWhiteSpace(currentUser)) currentUser = "Default";
