@@ -2697,6 +2697,14 @@ namespace MediaControlApp.Forms
 
                 string currentVersion = $"v{Application.ProductVersion}";
 
+                // Remove Git commit/hash suffix
+                int plusIndex = currentVersion.IndexOf('+');
+
+                if (plusIndex >= 0)
+                {
+                    currentVersion = currentVersion.Substring(0, plusIndex);
+                }
+
                 if (!string.Equals(
                         currentVersion,
                         release.tag_name,
