@@ -1557,6 +1557,14 @@ namespace MediaControlApp.Forms
         }
 
 
+        private class GitHubRelease
+        {
+            public string tag_name { get; set; }
+            public string html_url { get; set; }
+            public string body { get; set; }
+        }
+
+
 
         // 1.SkipAllExisting
         private class DragState
@@ -2656,6 +2664,96 @@ namespace MediaControlApp.Forms
                 btnRefresh.ForeColor = isDarkMode ? Color.White : Color.Black;
 
                 _isRefreshing = false;
+            }
+        }
+
+
+
+        private async Task CheckForUpdatesAsync()
+        {
+            var settings = AppConfig.Load();
+
+            if (settings.NextUpdateReminder.HasValue &&
+                DateTime.Now < settings.NextUpdateReminder.Value)
+            {
+                return;
+            }
+
+
+
+            try
+            {
+                using var client = new HttpClient();
+
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("MediaStatus");
+
+                string json = await client.GetStringAsync(
+                    "https://api.github.com/repos/Jackhurley31/Media-Status/releases/latest");
+
+                var release = JsonSerializer.Deserialize<GitHubRelease>(json);
+
+                if (release == null || string.IsNullOrWhiteSpace(release.tag_name))
+                    return;
+
+                string currentVersion = $"v{Application.ProductVersion}";
+
+                if (!string.Equals(
+                        currentVersion,
+                        release.tag_name,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    string releaseNotes = string.IsNullOrWhiteSpace(release.body)
+    ? "No release notes provided."
+    : release.body;
+
+                    // Remove installation instructions from display
+                    int howToRunIndex = releaseNotes.IndexOf(
+                        "How to run:",
+                        StringComparison.OrdinalIgnoreCase);
+
+                    if (howToRunIndex >= 0)
+                    {
+                        releaseNotes = releaseNotes.Substring(0, howToRunIndex).Trim();
+                    }
+
+                    // Prevent massive GitHub changelogs
+                    if (releaseNotes.Length > 750)
+                    {
+                        releaseNotes = releaseNotes.Substring(0, 750) + "\n\n...";
+                    }
+
+                    var result = DarkMessageBox.Show(
+                        this,
+                        $"A new version is available!\n\n" +
+                        $"Current Version: {currentVersion}\n" +
+                        $"Latest Version: {release.tag_name}\n\n" +
+                        $"Release Notes:\n" +
+                        $"----------------------------------------\n" +
+                        $"{releaseNotes}\n\n" +
+                        $"Open GitHub release page?",
+                        "Update Available",
+                        MessageBoxButtons.YesNo,
+                        darkMode
+                    );
+
+                    if (result == DialogResult.Yes)
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = release.html_url,
+                            UseShellExecute = true
+                        });
+                    }
+                    else
+                    {
+                        settings.NextUpdateReminder = DateTime.Now.AddDays(7);
+                        AppConfig.Save(settings);
+                    }
+                }
+            }
+            catch
+            {
+                // Silent fail
             }
         }
 
@@ -4242,6 +4340,11 @@ namespace MediaControlApp.Forms
                         MediaCache.SaveLocal(items);
                     }
                 }
+
+                // Check for updates in the background
+                _ = CheckForUpdatesAsync();
+
+
             }
             catch (Exception ex)
             {

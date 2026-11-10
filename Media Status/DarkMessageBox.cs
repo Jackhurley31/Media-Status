@@ -20,11 +20,26 @@ namespace Media_Status
             string fontFamily = string.IsNullOrEmpty(settings.UIFontFamily) ? "Segoe UI" : settings.UIFontFamily;
             float baseSize = settings.UIFontSize > 0 ? settings.UIFontSize : 11.0f;
 
-            // Form setup with dynamic sizing based on text scale
+            // Form setup with smarter sizing based on message length
             this.Text = caption;
-            int dynamicWidth = Math.Max(400, (int)(baseSize * 30));
-            int dynamicHeight = Math.Max(180, (int)(baseSize * 14));
+
+            int dynamicWidth = Math.Max(550, (int)(baseSize * 45));
+
+            Size textSize = TextRenderer.MeasureText(
+                text,
+                new Font(fontFamily, baseSize),
+                new Size(dynamicWidth - 60, 0),
+                TextFormatFlags.WordBreak);
+
+            int dynamicHeight = Math.Max(
+                220,
+                textSize.Height + 130);
+
+            dynamicHeight = Math.Min(dynamicHeight, 700);
+
             this.Size = new Size(dynamicWidth, dynamicHeight);
+
+
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -60,7 +75,8 @@ namespace Media_Status
                 Padding = new Padding(15),
                 ForeColor = textColor,
                 Font = new Font(fontFamily, baseSize, FontStyle.Regular),
-                TextAlign = ContentAlignment.MiddleLeft
+                TextAlign = ContentAlignment.TopLeft,
+                AutoSize = false
             };
 
             // Bottom Panel for Buttons

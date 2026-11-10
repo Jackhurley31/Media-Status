@@ -9,6 +9,8 @@ namespace Media_Status
 {
     public class UserSettings
     {
+        public DateTime? NextUpdateReminder { get; set; }
+
         public bool DarkMode { get; set; } = true;
         public string CustomPlayerPath { get; set; } = @"C:\Program Files\VideoLAN\VLC\vlc.exe";
         public bool RunOnStartup { get; set; } = false;
