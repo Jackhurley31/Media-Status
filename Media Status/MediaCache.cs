@@ -253,22 +253,45 @@ namespace Media_Status
 
         private static void SaveInternal(string path, List<MediaItem> items)
         {
-            if (string.IsNullOrWhiteSpace(path)) return;
+            if (string.IsNullOrWhiteSpace(path))
+                return;
 
             string dir = Path.GetDirectoryName(path);
+
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
                 Directory.CreateDirectory(dir);
             }
 
+            // Clean up abandoned temp files older than 1 day
+            try
+            {
+                foreach (string oldTmp in Directory.GetFiles(
+                    dir,
+                    "media_state.json.*.tmp"))
+                {
+                    if (File.GetCreationTime(oldTmp) < DateTime.Now.AddDays(-1))
+                    {
+                        File.Delete(oldTmp);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore cleanup failures
+            }
+
             var json = JsonSerializer.Serialize(items, Options);
+
             string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
             File.WriteAllText(tempPath, json);
+
             if (File.Exists(path))
             {
                 File.Delete(path);
             }
+
             File.Move(tempPath, path);
         }
 

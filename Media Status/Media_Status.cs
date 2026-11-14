@@ -2705,10 +2705,13 @@ namespace MediaControlApp.Forms
                     currentVersion = currentVersion.Substring(0, plusIndex);
                 }
 
-                if (!string.Equals(
-                        currentVersion,
-                        release.tag_name,
-                        StringComparison.OrdinalIgnoreCase))
+                string currentVersionText = currentVersion.TrimStart('v', 'V');
+                string latestVersionText = release.tag_name.TrimStart('v', 'V');
+
+                if (Version.TryParse(currentVersionText, out var current) &&
+                    Version.TryParse(latestVersionText, out var latest) &&
+                    latest > current)
+
                 {
                     string releaseNotes = string.IsNullOrWhiteSpace(release.body)
     ? "No release notes provided."
@@ -3984,8 +3987,8 @@ namespace MediaControlApp.Forms
                             // 1. If we know the duration, check if it reached near the end OR if it played for most of the video track
                             if (ep.Duration > TimeSpan.Zero)
                             {
-                                // If it got within 15 seconds of the end, or played past 85% of its duration before closing
-                                if (_currentVlcTime >= (ep.Duration.TotalSeconds - 15) || sw.Elapsed.TotalSeconds >= (ep.Duration.TotalSeconds * 0.85))
+                                // If it got within 45 seconds of the end, or played past 80% of its duration before closing
+                                if (_currentVlcTime >= (ep.Duration.TotalSeconds - 45) || sw.Elapsed.TotalSeconds >= (ep.Duration.TotalSeconds * 0.80))
                                 {
                                     finishedNaturally = true;
                                 }
@@ -4003,13 +4006,9 @@ namespace MediaControlApp.Forms
 
                             // 3. Fallback for short clips or edge cases where VLC exited cleanly via --play-and-exit
                             // If the user didn't hit stop, and it ran for a decent amount of time relative to the last known position
-                            if (!finishedNaturally && sw.Elapsed.TotalSeconds > 10 && _currentVlcTime > userSavedPos)
+                            if (!finishedNaturally &  ep.Duration > TimeSpan.Zero && _currentVlcTime >= (ep.Duration.TotalSeconds * 0.75))
                             {
-                                // If it got very close to the end based on local tracking
-                                if (ep.Duration > TimeSpan.Zero && _currentVlcTime >= (ep.Duration.TotalSeconds * 0.8))
-                                {
-                                    finishedNaturally = true;
-                                }
+                                finishedNaturally = true;
                             }
                         }
 
@@ -4026,7 +4025,7 @@ namespace MediaControlApp.Forms
                                 masterItem.MarkWatched(currentUser);
                             }
 
-                            SaveAndMergeState();
+                            await SaveAndMergeState();
 
                             // Force UI and Title Bar to refresh on the UI thread
                             this.Invoke((MethodInvoker)delegate
@@ -4072,7 +4071,7 @@ namespace MediaControlApp.Forms
                                 masterItem.SetSavedPosition(currentUser, _currentVlcTime);
                             }
 
-                            SaveAndMergeState();
+                            await SaveAndMergeState();
                             break;
                         }
                     }
@@ -5639,7 +5638,7 @@ namespace MediaControlApp.Forms
             using (Form dlg = new Form())
             {
                 dlg.Text = "Random Picker";
-                dlg.Size = new Size(360, 210);
+                dlg.Size = new Size(360, 260);
                 dlg.StartPosition = FormStartPosition.CenterParent;
                 dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                 dlg.MaximizeBox = false;
@@ -5659,11 +5658,18 @@ namespace MediaControlApp.Forms
                     Height = 45
                 };
 
-                Panel pnlButtons = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
+                FlowLayoutPanel pnlButtons = new FlowLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    FlowDirection = FlowDirection.TopDown,
+                    WrapContents = false,
+                    Padding = new Padding(20),
+                    AutoScroll = true
+                };
 
-                Button btnFilm = CreateDialogButton("Film / Movie", Color.FromArgb(0, 122, 204), 10);
-                Button btnShow = CreateDialogButton("TV Show", Color.FromArgb(40, 167, 69), 50);
-                Button btnEither = CreateDialogButton("Surprise Me (Either)", Color.FromArgb(108, 117, 125), 90);
+                Button btnFilm = CreateDialogButton("Film / Movie", Color.FromArgb(0, 122, 204));
+                Button btnShow = CreateDialogButton("TV Show", Color.FromArgb(40, 167, 69));
+                Button btnEither = CreateDialogButton("Surprise Me (Either)", Color.FromArgb(108, 117, 125));
 
                 string result = "";
                 btnFilm.Click += (s, e) => { result = "Film"; dlg.DialogResult = DialogResult.OK; dlg.Close(); };
@@ -5682,15 +5688,14 @@ namespace MediaControlApp.Forms
             }
         }
 
-        private Button CreateDialogButton(string text, Color col, int topOffset)
+        private Button CreateDialogButton(string text, Color col)
         {
             return new Button
             {
                 Text = text,
-                Top = topOffset,
-                Left = 40,
                 Width = 260,
-                Height = 32,
+                Height = 35,
+                Margin = new Padding(5),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = col,
                 ForeColor = Color.White,

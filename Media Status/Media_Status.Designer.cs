@@ -51,17 +51,17 @@ namespace MediaControlApp.Forms
 
         private void InitializeComponent()
         {
+            GroupBox groupBox1;
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
-            splitMain = new SplitContainer();
-            splitContainer1 = new SplitContainer();
-            picPoster = new PictureBox();
-            treeShows = new TreeView();
-            groupBox1 = new GroupBox();
             tableLayoutPanel1 = new TableLayoutPanel();
             lblCurrentUser = new Label();
             version = new Label();
             BtnCheckTVMAZE = new Button();
             BtnCheckIMDb = new Button();
+            splitMain = new SplitContainer();
+            splitContainer1 = new SplitContainer();
+            picPoster = new PictureBox();
+            treeShows = new TreeView();
             listEpisodes = new ListView();
             colName = new ColumnHeader();
             colSeason = new ColumnHeader();
@@ -101,6 +101,9 @@ namespace MediaControlApp.Forms
             chkFullscreen = new CheckBox();
             chkSubtitles = new CheckBox();
             cmbScreens = new ComboBox();
+            groupBox1 = new GroupBox();
+            groupBox1.SuspendLayout();
+            tableLayoutPanel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
@@ -110,8 +113,6 @@ namespace MediaControlApp.Forms
             splitContainer1.Panel2.SuspendLayout();
             splitContainer1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)picPoster).BeginInit();
-            groupBox1.SuspendLayout();
-            tableLayoutPanel1.SuspendLayout();
             layoutBottomPanel.SuspendLayout();
             flowLayoutPanel2.SuspendLayout();
             flowLayoutPanel3.SuspendLayout();
@@ -121,6 +122,93 @@ namespace MediaControlApp.Forms
             gb_action_setting2.SuspendLayout();
             gb_action_setting1.SuspendLayout();
             SuspendLayout();
+            // 
+            // groupBox1
+            // 
+            groupBox1.AutoSize = true;
+            groupBox1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            groupBox1.Controls.Add(tableLayoutPanel1);
+            groupBox1.Dock = DockStyle.Bottom;
+            groupBox1.Location = new Point(0, 438);
+            groupBox1.Name = "groupBox1";
+            groupBox1.Size = new Size(327, 87);
+            groupBox1.TabIndex = 8;
+            groupBox1.TabStop = false;
+            // 
+            // tableLayoutPanel1
+            // 
+            tableLayoutPanel1.AutoSize = true;
+            tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tableLayoutPanel1.BackColor = Color.Transparent;
+            tableLayoutPanel1.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
+            tableLayoutPanel1.ColumnCount = 2;
+            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel1.Controls.Add(lblCurrentUser, 1, 0);
+            tableLayoutPanel1.Controls.Add(version, 0, 0);
+            tableLayoutPanel1.Controls.Add(BtnCheckTVMAZE, 0, 1);
+            tableLayoutPanel1.Controls.Add(BtnCheckIMDb, 0, 2);
+            tableLayoutPanel1.Dock = DockStyle.Fill;
+            tableLayoutPanel1.ForeColor = Color.Black;
+            tableLayoutPanel1.Location = new Point(3, 19);
+            tableLayoutPanel1.Name = "tableLayoutPanel1";
+            tableLayoutPanel1.RowCount = 3;
+            tableLayoutPanel1.RowStyles.Add(new RowStyle());
+            tableLayoutPanel1.RowStyles.Add(new RowStyle());
+            tableLayoutPanel1.RowStyles.Add(new RowStyle());
+            tableLayoutPanel1.Size = new Size(321, 65);
+            tableLayoutPanel1.TabIndex = 9;
+            // 
+            // lblCurrentUser
+            // 
+            lblCurrentUser.AutoSize = true;
+            lblCurrentUser.BackColor = Color.Transparent;
+            lblCurrentUser.Location = new Point(126, 1);
+            lblCurrentUser.Name = "lblCurrentUser";
+            lblCurrentUser.Size = new Size(70, 15);
+            lblCurrentUser.TabIndex = 7;
+            lblCurrentUser.Text = "CurrentUser";
+            // 
+            // version
+            // 
+            version.AutoSize = true;
+            version.BackColor = Color.Transparent;
+            version.Location = new Point(4, 1);
+            version.Name = "version";
+            version.Size = new Size(45, 15);
+            version.TabIndex = 8;
+            version.Text = "version";
+            // 
+            // BtnCheckTVMAZE
+            // 
+            BtnCheckTVMAZE.AutoSize = true;
+            BtnCheckTVMAZE.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            BtnCheckTVMAZE.BackgroundImageLayout = ImageLayout.Center;
+            BtnCheckTVMAZE.Cursor = Cursors.Hand;
+            BtnCheckTVMAZE.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            BtnCheckTVMAZE.Image = Media_Status.Properties.Resources.tvm_logo;
+            BtnCheckTVMAZE.Location = new Point(1, 17);
+            BtnCheckTVMAZE.Margin = new Padding(0);
+            BtnCheckTVMAZE.MaximumSize = new Size(115, 20);
+            BtnCheckTVMAZE.Name = "BtnCheckTVMAZE";
+            BtnCheckTVMAZE.Size = new Size(115, 20);
+            BtnCheckTVMAZE.TabIndex = 5;
+            BtnCheckTVMAZE.Click += BtnCheckTVMAZE_Click;
+            // 
+            // BtnCheckIMDb
+            // 
+            BtnCheckIMDb.AutoSize = true;
+            BtnCheckIMDb.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            BtnCheckIMDb.BackgroundImageLayout = ImageLayout.Center;
+            BtnCheckIMDb.Cursor = Cursors.Hand;
+            BtnCheckIMDb.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            BtnCheckIMDb.Image = Media_Status.Properties.Resources.IMDb_Logo;
+            BtnCheckIMDb.Location = new Point(4, 41);
+            BtnCheckIMDb.MaximumSize = new Size(115, 20);
+            BtnCheckIMDb.Name = "BtnCheckIMDb";
+            BtnCheckIMDb.Size = new Size(115, 20);
+            BtnCheckIMDb.TabIndex = 4;
+            BtnCheckIMDb.Click += BtnCheckIMDb_Click;
             // 
             // splitMain
             // 
@@ -185,85 +273,9 @@ namespace MediaControlApp.Forms
             treeShows.HideSelection = false;
             treeShows.Location = new Point(0, 0);
             treeShows.Name = "treeShows";
-            treeShows.Size = new Size(327, 428);
+            treeShows.Size = new Size(327, 438);
             treeShows.TabIndex = 0;
             treeShows.AfterSelect += treeShows_AfterSelect;
-            // 
-            // groupBox1
-            // 
-            groupBox1.Controls.Add(tableLayoutPanel1);
-            groupBox1.Dock = DockStyle.Bottom;
-            groupBox1.Location = new Point(0, 428);
-            groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(327, 97);
-            groupBox1.TabIndex = 8;
-            groupBox1.TabStop = false;
-            // 
-            // tableLayoutPanel1
-            // 
-            tableLayoutPanel1.BackColor = Color.Transparent;
-            tableLayoutPanel1.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
-            tableLayoutPanel1.ColumnCount = 2;
-            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel1.Controls.Add(lblCurrentUser, 1, 0);
-            tableLayoutPanel1.Controls.Add(version, 0, 0);
-            tableLayoutPanel1.Controls.Add(BtnCheckTVMAZE, 0, 1);
-            tableLayoutPanel1.Controls.Add(BtnCheckIMDb, 0, 2);
-            tableLayoutPanel1.Dock = DockStyle.Fill;
-            tableLayoutPanel1.ForeColor = Color.Black;
-            tableLayoutPanel1.Location = new Point(3, 19);
-            tableLayoutPanel1.Name = "tableLayoutPanel1";
-            tableLayoutPanel1.RowCount = 3;
-            tableLayoutPanel1.RowStyles.Add(new RowStyle());
-            tableLayoutPanel1.RowStyles.Add(new RowStyle());
-            tableLayoutPanel1.RowStyles.Add(new RowStyle());
-            tableLayoutPanel1.Size = new Size(321, 75);
-            tableLayoutPanel1.TabIndex = 9;
-            // 
-            // lblCurrentUser
-            // 
-            lblCurrentUser.AutoSize = true;
-            lblCurrentUser.BackColor = Color.Transparent;
-            lblCurrentUser.Location = new Point(123, 1);
-            lblCurrentUser.Name = "lblCurrentUser";
-            lblCurrentUser.Size = new Size(70, 15);
-            lblCurrentUser.TabIndex = 7;
-            lblCurrentUser.Text = "CurrentUser";
-            // 
-            // version
-            // 
-            version.AutoSize = true;
-            version.BackColor = Color.Transparent;
-            version.Location = new Point(4, 1);
-            version.Name = "version";
-            version.Size = new Size(45, 15);
-            version.TabIndex = 8;
-            version.Text = "version";
-            // 
-            // BtnCheckTVMAZE
-            // 
-            BtnCheckTVMAZE.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnCheckTVMAZE.BackgroundImageLayout = ImageLayout.Center;
-            BtnCheckTVMAZE.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            BtnCheckTVMAZE.Image = Media_Status.Properties.Resources.tvm_logo;
-            BtnCheckTVMAZE.Location = new Point(4, 20);
-            BtnCheckTVMAZE.Name = "BtnCheckTVMAZE";
-            BtnCheckTVMAZE.Size = new Size(112, 23);
-            BtnCheckTVMAZE.TabIndex = 5;
-            BtnCheckTVMAZE.Click += BtnCheckTVMAZE_Click;
-            // 
-            // BtnCheckIMDb
-            // 
-            BtnCheckIMDb.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BtnCheckIMDb.BackgroundImageLayout = ImageLayout.Center;
-            BtnCheckIMDb.Font = new Font("Arial", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            BtnCheckIMDb.Image = Media_Status.Properties.Resources.IMDb_Logo;
-            BtnCheckIMDb.Location = new Point(4, 50);
-            BtnCheckIMDb.Name = "BtnCheckIMDb";
-            BtnCheckIMDb.Size = new Size(112, 20);
-            BtnCheckIMDb.TabIndex = 4;
-            BtnCheckIMDb.Click += BtnCheckIMDb_Click;
             // 
             // listEpisodes
             // 
@@ -706,6 +718,10 @@ namespace MediaControlApp.Forms
             WindowState = FormWindowState.Maximized;
             FormClosing += MainForm_FormClosing;
             Load += MainForm_Load;
+            groupBox1.ResumeLayout(false);
+            groupBox1.PerformLayout();
+            tableLayoutPanel1.ResumeLayout(false);
+            tableLayoutPanel1.PerformLayout();
             splitMain.Panel1.ResumeLayout(false);
             splitMain.Panel2.ResumeLayout(false);
             splitMain.Panel2.PerformLayout();
@@ -713,12 +729,10 @@ namespace MediaControlApp.Forms
             splitMain.ResumeLayout(false);
             splitContainer1.Panel1.ResumeLayout(false);
             splitContainer1.Panel2.ResumeLayout(false);
+            splitContainer1.Panel2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
             splitContainer1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)picPoster).EndInit();
-            groupBox1.ResumeLayout(false);
-            tableLayoutPanel1.ResumeLayout(false);
-            tableLayoutPanel1.PerformLayout();
             layoutBottomPanel.ResumeLayout(false);
             layoutBottomPanel.PerformLayout();
             flowLayoutPanel2.ResumeLayout(false);
