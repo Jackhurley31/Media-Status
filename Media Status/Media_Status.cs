@@ -202,6 +202,10 @@ namespace MediaControlApp.Forms
 
         private async Task InitializeBackgroundScanAsync()
         {
+            // Fetch junk tags from GitHub (with local fallback) asynchronously on startup
+            List<string> currentTags = await JunkTagManager.LoadAsync();
+
+
             await Task.Run(() =>
             {
 
