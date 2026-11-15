@@ -1935,7 +1935,7 @@ namespace MediaControlApp.Forms
                 return;
             }
 
-            // 0. Guard clause: Clear poster immediately if a system category or year folder is selected
+            // Guard clause: Clear poster immediately if a system category or year folder is selected
             string trimmed = mediaPathOrTitle.Replace("★ ", "").Trim();
             bool isSystemOrYear =
                 trimmed.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
@@ -1956,108 +1956,84 @@ namespace MediaControlApp.Forms
 
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string resolvedPath = null;
-                try { resolvedPath = BuildFullPath(mediaPathOrTitle); }
-                catch { resolvedPath = mediaPathOrTitle; }
+                _posterCancellationTokenSource?.Cancel();
+
+                // 1. Map directly to the MediaItem record to get the precise file path and avoid genre folder confusion (e.g. CurseFilms)
+                MediaItem matchedFilm = items?.FirstOrDefault(i =>
+                    IsFilmItem(i) && (
+                        string.Equals(Path.GetFileNameWithoutExtension(i.FilePath), trimmed, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(i.CachedSeriesName, trimmed, StringComparison.OrdinalIgnoreCase)
+                    ));
 
                 string targetDir = null;
-                if (!string.IsNullOrEmpty(resolvedPath))
+                string movieFileName = trimmed;
+
+                if (matchedFilm != null && !string.IsNullOrEmpty(matchedFilm.FilePath))
                 {
-                    if (Directory.Exists(resolvedPath)) targetDir = resolvedPath;
-                    else if (File.Exists(resolvedPath)) targetDir = Path.GetDirectoryName(resolvedPath);
+                    string fullPath = BuildFullPath(matchedFilm.FilePath);
+                    if (File.Exists(fullPath))
+                    {
+                        targetDir = Path.GetDirectoryName(fullPath);
+                        movieFileName = Path.GetFileNameWithoutExtension(fullPath);
+                    }
                 }
 
-                // 1. Check local poster files first (poster.jpg, folder.jpg, cover.jpg, etc.)
+                if (string.IsNullOrEmpty(targetDir))
+                {
+                    string resolvedPath = null;
+                    try { resolvedPath = BuildFullPath(trimmed); }
+                    catch { resolvedPath = trimmed; }
+
+                    if (!string.IsNullOrEmpty(resolvedPath))
+                    {
+                        if (Directory.Exists(resolvedPath)) targetDir = resolvedPath;
+                        else if (File.Exists(resolvedPath))
+                        {
+                            targetDir = Path.GetDirectoryName(resolvedPath);
+                            movieFileName = Path.GetFileNameWithoutExtension(resolvedPath);
+                        }
+                    }
+                }
+
+                // 2. Check if the film's specific folder contains a local poster file
                 string localPosterFile = null;
                 string[] posterNames = { "poster.jpg", "poster.jpeg", "poster.png", "folder.jpg", "folder.jpeg", "folder.png", "cover.jpg", "cover.jpeg", "cover.png" };
 
                 if (!string.IsNullOrEmpty(targetDir) && Directory.Exists(targetDir))
                 {
-                    DirectoryInfo currentDir = new DirectoryInfo(targetDir);
-                    for (int i = 0; i < 4 && currentDir != null; i++)
+                    foreach (var name in posterNames)
                     {
-                        try
+                        string candidate = Path.Combine(targetDir, name);
+                        if (File.Exists(candidate))
                         {
-                            foreach (var name in posterNames)
-                            {
-                                string candidate = Path.Combine(currentDir.FullName, name);
-                                if (File.Exists(candidate))
-                                {
-                                    localPosterFile = candidate;
-                                    break;
-                                }
-                            }
-                            if (localPosterFile != null) break;
-                            currentDir = currentDir.Parent;
-                        }
-                        catch { break; }
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(localPosterFile) && File.Exists(localPosterFile))
-                {
-                    _posterCancellationTokenSource?.Cancel();
-                    try
-                    {
-                        using (var fs = new FileStream(localPosterFile, FileMode.Open, FileAccess.Read, FileShare.Read))
-                        {
-                            using (var img = Image.FromStream(fs))
-                            {
-                                picPoster.Image = new Bitmap(img);
-                            }
-                        }
-                        return;
-                    }
-                    catch { }
-                }
-
-                // 2. Extract and clean Film Title (Robust upward climbing for any wrapper or category folder)
-                string sourceNameToClean = string.Empty;
-                if (!string.IsNullOrEmpty(targetDir))
-                {
-                    DirectoryInfo dirInfo = new DirectoryInfo(targetDir);
-                    while (dirInfo != null && dirInfo.Parent != null)
-                    {
-                        string dirName = dirInfo.Name;
-
-                        // Check if this folder is a category header, system root, or 4-digit year folder
-                        bool isIgnoredFolder =
-                            Regex.IsMatch(dirName, @"^(19|20)\d{2}$") ||
-                            dirName.Equals("Watched", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Continue", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Recently Added", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Recently added", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Films", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Film", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Favorites", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("★ Favorites", StringComparison.OrdinalIgnoreCase) ||
-                            dirName.Equals("Other", StringComparison.OrdinalIgnoreCase);
-
-                        // If it's a wrapper/category folder, step up to the parent directory
-                        if (isIgnoredFolder)
-                        {
-                            dirInfo = dirInfo.Parent;
-                        }
-                        else
-                        {
-                            // Stop climbing as soon as we hit a non-ignored folder (the actual movie folder)
+                            localPosterFile = candidate;
                             break;
                         }
                     }
-                    sourceNameToClean = dirInfo?.Name ?? Path.GetFileNameWithoutExtension(resolvedPath);
-                }
-                else
-                {
-                    sourceNameToClean = Path.GetFileNameWithoutExtension(resolvedPath);
                 }
 
-                string cleanTitle = System.Text.RegularExpressions.Regex.Replace(sourceNameToClean, @"\b(19|20)\d{2}\b", "");
-                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"(?i)(1080p|720p|hrhdtv|web-dl|bluray|x264|x265)", "");
-                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"[\(\[].*?[\)\]]", "");
+                // If found in the film's folder, load it instantly with zero lag
+                if (!string.IsNullOrEmpty(localPosterFile) && File.Exists(localPosterFile))
+                {
+                    using (var fs = new FileStream(localPosterFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    {
+                        using (var img = Image.FromStream(fs))
+                        {
+                            picPoster.Image = new Bitmap(img);
+                        }
+                    }
+                    return;
+                }
+
+                // 3. Fallback: Check local C: Drive PosterCache using the clean movie title/filename
+                string cleanTitle = Regex.Replace(movieFileName, @"\b(19|20)\d{2}\b", "");
+                cleanTitle = Regex.Replace(cleanTitle, @"(?i)(1080p|720p|bluray|web-dl|x264|x265)", "");
                 cleanTitle = cleanTitle.Replace(".", " ").Replace("_", " ").Trim();
 
-                if (string.IsNullOrWhiteSpace(cleanTitle)) return;
+                if (string.IsNullOrWhiteSpace(cleanTitle))
+                {
+                    cleanTitle = trimmed;
+                }
 
                 string posterCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MediaControlApp", "PosterCache");
                 Directory.CreateDirectory(posterCacheDir);
@@ -2067,32 +2043,25 @@ namespace MediaControlApp.Forms
 
                 if (File.Exists(localPosterPath))
                 {
-                    _posterCancellationTokenSource?.Cancel();
-                    try
+                    using (var fs = new FileStream(localPosterPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                     {
-                        using (var fs = new FileStream(localPosterPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                        using (var img = Image.FromStream(fs))
                         {
-                            using (var img = Image.FromStream(fs))
-                            {
-                                picPoster.Image = new Bitmap(img);
-                            }
+                            picPoster.Image = new Bitmap(img);
                         }
-                        return;
                     }
-                    catch { File.Delete(localPosterPath); }
+                    return;
                 }
 
-                _posterCancellationTokenSource?.Cancel();
+                // 4. Fallback: Download via IMDb API asynchronously if not found locally or in cache
                 _posterCancellationTokenSource = new CancellationTokenSource();
                 var cancellationToken = _posterCancellationTokenSource.Token;
 
-                // 3. Keyless Open Search Query for Movie Posters
                 using (HttpClient client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
                     string imageUrl = null;
 
-                    // Using the open IMDb suggestion mirror (No API key needed)
                     string searchUrl = $"https://v2.sg.media-imdb.com/suggestion/x/{Uri.EscapeDataString(cleanTitle)}.json";
                     HttpResponseMessage response = await client.GetAsync(searchUrl, cancellationToken);
 
@@ -2125,7 +2094,7 @@ namespace MediaControlApp.Forms
                             {
                                 using (var img = Image.FromStream(ms))
                                 {
-                                    picPoster.Image = new Bitmap(img);
+                                    picPoster.Image = new Bitmap(ms); // or new Bitmap(img)
                                 }
                             }
                         }
@@ -2141,7 +2110,7 @@ namespace MediaControlApp.Forms
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Film auto-poster error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Film poster error: {ex.Message}");
                 picPoster.Image = null;
             }
         }
