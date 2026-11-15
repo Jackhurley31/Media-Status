@@ -21,59 +21,54 @@ namespace Media_Status
                 "MediaControlApp",
                 "junk_tags.json");
 
-        // Direct Raw URL pointing to your GitHub repository file
         private const string GitHubRawUrl = "https://raw.githubusercontent.com/Jackhurley31/Media-Status/master/junk_tags.json";
 
         private static readonly HttpClient HttpClient = new HttpClient();
 
         /// <summary>
-        /// Attempts to download the latest tags from GitHub on startup.
-        /// Falls back to the local LocalAppData cache if offline.
+        /// Downloads the latest tags from GitHub on startup and saves them locally.
         /// </summary>
         public static async Task<List<string>> LoadAsync()
         {
             try
             {
-                // 1. Try downloading the fresh list from GitHub
                 string json = await HttpClient.GetStringAsync(GitHubRawUrl);
                 var settings = JsonSerializer.Deserialize<JunkTagSettings>(json);
 
                 if (settings?.Tags != null && settings.Tags.Count > 0)
                 {
-                    bool changed = false;
-
                     foreach (string tag in GetDefaultTags())
                     {
                         if (!settings.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
                         {
                             settings.Tags.Add(tag);
-                            changed = true;
                         }
                     }
 
-                    // Save the updated list locally for offline caching
                     Save(settings.Tags);
                     return settings.Tags;
                 }
             }
             catch
             {
-                // Network failed or offline — fall back smoothly to local cache
+                // Offline or network failed — fall back to local cache
             }
 
-            return LoadLocal();
+            return Load();
         }
 
-        private static List<string> LoadLocal()
+        /// <summary>
+        /// Synchronous load for existing callers (EpisodeRenamer, RenamerSettings).
+        /// Reads the cached local file that LoadAsync() keeps updated.
+        /// </summary>
+        public static List<string> Load()
         {
             try
             {
                 if (File.Exists(FilePath))
                 {
                     string json = File.ReadAllText(FilePath);
-
-                    var settings =
-                        JsonSerializer.Deserialize<JunkTagSettings>(json);
+                    var settings = JsonSerializer.Deserialize<JunkTagSettings>(json);
 
                     if (settings?.Tags != null)
                     {
@@ -81,8 +76,7 @@ namespace Media_Status
 
                         foreach (string tag in GetDefaultTags())
                         {
-                            if (!settings.Tags.Contains(tag,
-                                StringComparer.OrdinalIgnoreCase))
+                            if (!settings.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
                             {
                                 settings.Tags.Add(tag);
                                 changed = true;
@@ -103,9 +97,7 @@ namespace Media_Status
             }
 
             var defaults = GetDefaultTags();
-
             Save(defaults);
-
             return defaults;
         }
 
