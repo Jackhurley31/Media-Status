@@ -38,19 +38,19 @@ public static class EpisodeRenamer
             "Watched", "Continue", "Recently Added", "Films", "TV Shows", "All Shows", "Favorites", "Other"
         };
 
-        // 1. Determine if selection is under Films
+        // 1. Determine if selection is a film
         if (treeShows.SelectedNode != null)
         {
-            TreeNode check = treeShows.SelectedNode;
-            while (check != null)
+            if (treeShows.SelectedNode.Tag is List<MediaItem> mediaList &&
+                mediaList.Any(m =>
+                    (!string.IsNullOrEmpty(m.CachedCategory) &&
+                     m.CachedCategory.Contains("Film", StringComparison.OrdinalIgnoreCase))
+                    ||
+                    (!string.IsNullOrEmpty(m.FilePath) &&
+                     (m.FilePath.Contains(@"\Films\", StringComparison.OrdinalIgnoreCase) ||
+                      m.FilePath.Contains(@"\Film\", StringComparison.OrdinalIgnoreCase)))))
             {
-                string text = check.Text.Replace("★ ", "").Trim();
-                if (text.Equals("Films", StringComparison.OrdinalIgnoreCase))
-                {
-                    isFilmSelection = true;
-                    break;
-                }
-                check = check.Parent;
+                isFilmSelection = true;
             }
         }
 

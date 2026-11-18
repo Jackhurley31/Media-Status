@@ -477,85 +477,89 @@ namespace MediaControlApp.Forms
             var node = treeShows.SelectedNode;
             if (node == null) return;
 
-            string targetTitle = ResolveTargetTitleFromNode(node);
-            if (string.IsNullOrWhiteSpace(targetTitle))
+            MediaItem targetItem = null;
+
+            if (node.Tag is List<MediaItem> list && list.Any())
             {
-                DarkMessageBox.Show(this, "Please select a valid show or movie to overwrite its poster cache.", "Invalid Selection", MessageBoxButtons.OK, darkMode);
+                targetItem = list.FirstOrDefault();
+            }
+            else if (node.Tag is MediaItem single)
+            {
+                targetItem = single;
+            }
+
+            if (targetItem == null)
+            {
+                DarkMessageBox.Show(
+                    this,
+                    "Please select a show, season, or film.",
+                    "Invalid Selection",
+                    MessageBoxButtons.OK,
+                    darkMode);
+
                 return;
             }
 
-            // Resolve target directory to inspect for local artwork
-            string resolvedPath = null;
-            try { resolvedPath = BuildFullPath(targetTitle); } catch { resolvedPath = targetTitle; }
+            bool isFilm = IsFilmItem(targetItem);
 
-            string targetDir = null;
-            if (!string.IsNullOrEmpty(resolvedPath))
-            {
-                if (Directory.Exists(resolvedPath)) targetDir = resolvedPath;
-                else if (File.Exists(resolvedPath)) targetDir = Path.GetDirectoryName(resolvedPath);
-            }
+            string targetTitle = isFilm
+                ? GetFilmTitle(targetItem)
+                : targetItem.CachedSeriesName;
 
-            // Handle film items specifically if they map via MediaItem records
-            if (node.Tag is List<MediaItem> list && list.Any(IsFilmItem))
+            using (var dlg = new OpenFileDialog())
             {
-                var matchedFilm = list.FirstOrDefault(IsFilmItem);
-                if (matchedFilm != null && !string.IsNullOrEmpty(matchedFilm.FilePath))
+                dlg.Title = $"Select Poster for {targetTitle}";
+                dlg.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
+
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
                 {
-                    string fullPath = BuildFullPath(matchedFilm.FilePath);
-                    if (File.Exists(fullPath)) targetDir = Path.GetDirectoryName(fullPath);
+                    string cleanTitle =
+                        PosterManager.CleanTitle(targetTitle);
+
+                    string masterCacheDir =
+                        PosterManager.GetMasterCacheDir(RootFolder);
+
+                    Directory.CreateDirectory(masterCacheDir);
+
+                    string safeFileName =
+                        string.Join("_",
+                            cleanTitle.Split(Path.GetInvalidFileNameChars()));
+
+                    string masterCachedPath =
+                        Path.Combine(masterCacheDir, safeFileName + ".jpg");
+
+                    File.Copy(
+                        dlg.FileName,
+                        masterCachedPath,
+                        overwrite: true);
+
+                    if (isFilm)
+                    {
+                        await LoadAutoFilmPosterAsync(targetTitle);
+                    }
+                    else
+                    {
+                        await LoadAutoOnlinePosterAsync(targetTitle);
+                    }
+
+                    ShowAutoClosingBox(
+                        this,
+                        "Poster cache updated successfully!",
+                        "Success",
+                        3000,
+                        darkMode);
                 }
-            }
-
-            string cleanTitle = PosterManager.CleanTitle(targetTitle);
-
-            using (var openDlg = new OpenFileDialog())
-            {
-                openDlg.Title = $"Select Custom Poster for {cleanTitle}";
-                openDlg.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
-
-                if (openDlg.ShowDialog(this) == DialogResult.OK)
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        // Check if a local poster file already exists inside the media directory
-                        string existingLocalPoster = PosterManager.FindLocalPosterFile(targetDir);
-
-                        // ALWAYS clear out the old master cache file for this title to prevent stale fallback images
-                        string masterCacheDir = PosterManager.GetMasterCacheDir(RootFolder);
-                        string safeFileName = string.Join("_", cleanTitle.Split(Path.GetInvalidFileNameChars()));
-                        string masterCachedPath = Path.Combine(masterCacheDir, safeFileName + ".jpg");
-                        if (File.Exists(masterCachedPath))
-                        {
-                            try { File.Delete(masterCachedPath); } catch { }
-                        }
-
-                        if (!string.IsNullOrEmpty(existingLocalPoster))
-                        {
-                            // Smart Overwrite: Update the local file directly in its directory
-                            File.Copy(openDlg.FileName, existingLocalPoster, overwrite: true);
-                        }
-                        else
-                        {
-                            // Fallback: Save to the master tool root cache
-                            File.Copy(openDlg.FileName, masterCachedPath, overwrite: true);
-                        }
-
-                        // Instantly refresh the UI via your form's existing async loaders
-                        if (node.Tag is List<MediaItem> listFilm && listFilm.Any(IsFilmItem))
-                        {
-                            await LoadAutoFilmPosterAsync(targetTitle);
-                        }
-                        else
-                        {
-                            await LoadAutoOnlinePosterAsync(targetTitle);
-                        }
-
-                        ShowAutoClosingBox(this, "Poster overwritten successfully!", "Success", 3000, darkMode);
-                    }
-                    catch (Exception ex)
-                    {
-                        DarkMessageBox.Show(this, $"Failed to overwrite poster: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
-                    }
+                    DarkMessageBox.Show(
+                        this,
+                        $"Failed to update poster cache: {ex.Message}",
+                        "Error",
+                        MessageBoxButtons.OK,
+                        darkMode);
                 }
             }
         }
@@ -567,103 +571,196 @@ namespace MediaControlApp.Forms
             var node = treeShows.SelectedNode;
             if (node == null) return;
 
-            string targetTitle = ResolveTargetTitleFromNode(node);
-            if (string.IsNullOrWhiteSpace(targetTitle))
-            {
-                DarkMessageBox.Show(this, "Please select a valid film item.", "Invalid Selection", MessageBoxButtons.OK, darkMode);
-                return;
-            }
+            MediaItem media = null;
 
-            // Locate the underlying MediaItem using valid properties
-            MediaItem matchedFilm = null;
-            if (node.Tag is List<MediaItem> seasonItems && seasonItems.Any())
+            if (node.Tag is List<MediaItem> list && list.Any())
             {
-                matchedFilm = seasonItems.FirstOrDefault(IsFilmItem) ?? seasonItems.FirstOrDefault();
+                media = list.FirstOrDefault();
             }
-            else if (node.Tag is MediaItem episode)
+            else if (node.Tag is MediaItem single)
             {
-                matchedFilm = episode;
+                media = single;
             }
             else
             {
-                string seriesName = targetTitle.Replace("★ ", "").Trim();
-                matchedFilm = items?.FirstOrDefault(i =>
-                    string.Equals(Path.GetFileNameWithoutExtension(i.FilePath), seriesName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(i.CachedSeriesName, seriesName, StringComparison.OrdinalIgnoreCase)
-                );
+                string showName = node.Text.Replace("★ ", "").Trim();
+
+                media = items.FirstOrDefault(i =>
+                    string.Equals(
+                        i.CachedSeriesName,
+                        showName,
+                        StringComparison.OrdinalIgnoreCase));
             }
 
-            if (matchedFilm == null || string.IsNullOrEmpty(matchedFilm.FilePath))
+            if (media == null)
             {
-                DarkMessageBox.Show(this, "Could not locate the file path for this film item.", "Error", MessageBoxButtons.OK, darkMode);
+                DarkMessageBox.Show(
+                    this,
+                    "Please select a movie or show.",
+                    "Invalid Selection",
+                    MessageBoxButtons.OK,
+                    darkMode);
+
                 return;
             }
 
-            string fullPath = BuildFullPath(matchedFilm.FilePath);
+            bool isFilm = IsFilmItem(media);
+
+            string targetTitle = isFilm
+                ? GetFilmTitle(media)
+                : media.CachedSeriesName;
+
+            string fullPath = BuildFullPath(media.FilePath);
+
             if (!File.Exists(fullPath))
             {
-                DarkMessageBox.Show(this, $"The media file could not be found on disk:\n{fullPath}", "File Not Found", MessageBoxButtons.OK, darkMode);
+                DarkMessageBox.Show(
+                    this,
+                    $"File not found:\n{fullPath}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    darkMode);
+
                 return;
             }
 
-            using (var openDlg = new OpenFileDialog())
+            using (var dlg = new OpenFileDialog())
             {
-                openDlg.Title = $"Select Custom Poster for {targetTitle}";
-                openDlg.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
+                dlg.Title = $"Select Poster for {targetTitle}";
+                dlg.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
 
-                if (openDlg.ShowDialog(this) == DialogResult.OK)
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
                 {
-                    try
+                    string posterFolder = null;
+
+                    if (isFilm)
                     {
-                        string currentDir = Path.GetDirectoryName(fullPath);
-                        string fileName = Path.GetFileName(fullPath);
-                        string fileNameWithoutExt = Path.GetFileNameWithoutExtension(fullPath);
+                        string currentDir =
+                            Path.GetDirectoryName(fullPath);
 
-                        // Check if the file is already in its own dedicated folder (ignoring root/category folders)
-                        bool isAlreadyInDedicatedFolder = !string.Equals(Path.GetFileName(currentDir), fileNameWithoutExt, StringComparison.OrdinalIgnoreCase);
+                        string movieName =
+                            Path.GetFileNameWithoutExtension(fullPath);
 
-                        string targetFolder = currentDir;
+                        string existingPoster =
+                            PosterManager.FindLocalPosterFile(currentDir);
 
-                        // If it's sharing a root/category folder, create a clean dedicated folder for it
-                        if (isAlreadyInDedicatedFolder)
+                        if (!string.IsNullOrEmpty(existingPoster))
                         {
-                            string safeFolderName = string.Join("_", fileNameWithoutExt.Split(Path.GetInvalidFileNameChars()));
-                            targetFolder = Path.Combine(currentDir, safeFolderName);
-                            Directory.CreateDirectory(targetFolder);
+                            posterFolder =
+                                Path.GetDirectoryName(existingPoster);
+                        }
+                        else
+                        {
+                            posterFolder =
+                                Path.Combine(currentDir, movieName);
 
-                            string newFilePath = Path.Combine(targetFolder, fileName);
+                            if (!Directory.Exists(posterFolder))
+                            {
+                                Directory.CreateDirectory(posterFolder);
 
-                            // Move the media file into its new dedicated folder
-                            File.Move(fullPath, newFilePath);
+                                string movedMovie =
+                                    Path.Combine(
+                                        posterFolder,
+                                        Path.GetFileName(fullPath));
 
-                            // Update the MediaItem record's file path to reflect the new location
-                            matchedFilm.FilePath = Path.GetRelativePath(RootFolder, newFilePath);
-                            await SaveAndMergeState();
+                                File.Move(fullPath, movedMovie);
+
+                                media.FilePath =
+                                    Path.GetRelativePath(
+                                        RootFolder,
+                                        movedMovie);
+
+                                await SaveAndMergeState();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        string seasonDir =
+                            Path.GetDirectoryName(fullPath);
+
+                        string seasonName =
+                            Path.GetFileName(seasonDir);
+
+                        if (seasonName.StartsWith("Season ",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            posterFolder =
+                                Directory.GetParent(seasonDir)?.FullName;
+                        }
+                        else
+                        {
+                            posterFolder = seasonDir;
                         }
 
-                        // Clear out any old master cache file so it doesn't override the new local poster
-                        string cleanTitle = PosterManager.CleanTitle(targetTitle);
-                        string masterCacheDir = PosterManager.GetMasterCacheDir(RootFolder);
-                        string safeFileName = string.Join("_", cleanTitle.Split(Path.GetInvalidFileNameChars()));
-                        string masterCachedPath = Path.Combine(masterCacheDir, safeFileName + ".jpg");
-                        if (File.Exists(masterCachedPath))
+                        if (string.IsNullOrEmpty(posterFolder))
                         {
-                            try { File.Delete(masterCachedPath); } catch { }
+                            throw new Exception(
+                                $"Could not locate show folder for '{targetTitle}'.");
                         }
+                    }
 
-                        // Copy the selected poster into the folder as "poster.jpg" (takes highest local priority!)
-                        string destPosterPath = Path.Combine(targetFolder, "poster.jpg");
-                        File.Copy(openDlg.FileName, destPosterPath, overwrite: true);
+                    string cleanTitle =
+                        PosterManager.CleanTitle(targetTitle);
 
-                        // Refresh the UI picture box instantly via your existing async loader
+                    string masterCacheDir =
+                        PosterManager.GetMasterCacheDir(RootFolder);
+
+                    string safeFileName =
+                        string.Join("_",
+                            cleanTitle.Split(Path.GetInvalidFileNameChars()));
+
+                    string masterCachedPath =
+                        Path.Combine(
+                            masterCacheDir,
+                            safeFileName + ".jpg");
+
+                    if (File.Exists(masterCachedPath))
+                    {
+                        try
+                        {
+                            File.Delete(masterCachedPath);
+                        }
+                        catch { }
+                    }
+
+                    string posterDest =
+                        Path.Combine(
+                            posterFolder,
+                            "poster.jpg");
+
+                    File.Copy(
+                        dlg.FileName,
+                        posterDest,
+                        true);
+
+                    if (isFilm)
+                    {
                         await LoadAutoFilmPosterAsync(targetTitle);
-
-                        ShowAutoClosingBox(this, "Folder created and custom poster added successfully!", "Success", 3000, darkMode);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        DarkMessageBox.Show(this, $"Failed to create folder or add poster: {ex.Message}", "Error", MessageBoxButtons.OK, darkMode);
+                        await LoadAutoOnlinePosterAsync(targetTitle);
                     }
+
+                    ShowAutoClosingBox(
+                        this,
+                        "Poster added successfully!",
+                        "Success",
+                        3000,
+                        darkMode);
+                }
+                catch (Exception ex)
+                {
+                    DarkMessageBox.Show(
+                        this,
+                        $"Failed to add poster: {ex.Message}",
+                        "Error",
+                        MessageBoxButtons.OK,
+                        darkMode);
                 }
             }
         }
@@ -995,31 +1092,38 @@ namespace MediaControlApp.Forms
                 TreeNode topRecentlyAddedNode = null;
                 DateTime now = DateTime.Now;
 
-                var recentTvItems = tvItems
+                var recentItems = itemsToDisplay
                     .Where(i =>
                     {
                         // Use cached date directly from memory to guarantee zero network lag on UI thread
                         DateTime modDate = i.CachedDateModified;
-                        return modDate != DateTime.MinValue && modDate.Year == now.Year && modDate.Month == now.Month;
+                        return modDate != DateTime.MinValue &&
+                               modDate.Year == now.Year &&
+                               modDate.Month == now.Month;
                     })
                     .ToList();
 
-                if (recentTvItems.Any())
+                if (recentItems.Any())
                 {
                     topRecentlyAddedNode = new TreeNode("Recently Added");
                     treeShows.Nodes.Add(topRecentlyAddedNode); // Placed right below Continue
 
-                    // Group recently added items by TV Show and populate child nodes
-                    var recentShows = recentTvItems
+                    // TV Shows
+                    var recentShows = recentItems
+                        .Where(i => !IsFilmItem(i))
                         .GroupBy(i => i.CachedSeriesName)
                         .OrderBy(g => g.Key);
 
                     foreach (var show in recentShows)
                     {
-                        if (string.IsNullOrWhiteSpace(show.Key)) continue;
+                        if (string.IsNullOrWhiteSpace(show.Key))
+                            continue;
 
                         string showNameClean = show.Key;
+                        var showItems = show.ToList();
+
                         var showNode = topRecentlyAddedNode.Nodes.Add(showNameClean);
+                        showNode.Tag = showItems;
 
                         var seasons = show
                             .GroupBy(i => i.CachedSeason)
@@ -1028,6 +1132,7 @@ namespace MediaControlApp.Forms
                         foreach (var season in seasons)
                         {
                             string seasonLabel = "Season " + season.Key;
+
                             var seasonNode = showNode.Nodes.Add(seasonLabel);
                             seasonNode.Tag = season.ToList();
 
@@ -1036,6 +1141,22 @@ namespace MediaControlApp.Forms
                             {
                                 nodeToSelect = seasonNode;
                             }
+                        }
+                    }
+
+                    // Films
+                    foreach (var film in recentItems
+                        .Where(IsFilmItem)
+                        .OrderByDescending(f => f.CachedDateModified))
+                    {
+                        string filmTitle = GetFilmTitle(film);
+
+                        var filmNode = topRecentlyAddedNode.Nodes.Add(filmTitle);
+                        filmNode.Tag = new List<MediaItem> { film };
+
+                        if (string.Equals(selectedShowName, filmTitle, StringComparison.OrdinalIgnoreCase))
+                        {
+                            nodeToSelect = filmNode;
                         }
                     }
 
@@ -1230,16 +1351,19 @@ namespace MediaControlApp.Forms
                         }
 
                         showNode = topWatchedNode.Nodes.Add(showNodeText);
+                        showNode.Tag = allShowItems;
                     }
                     else if ((hasAnyWatchedOrProgress || firstEpNeedsFinishing) && topContinueNode != null)
                     {
                         // Route partially watched or started shows (including Episode 1 with ToFinish markup) to "Continue" at top
                         showNode = topContinueNode.Nodes.Add(showNodeText);
+                        showNode.Tag = allShowItems;
                     }
                     else
                     {
                         // Unwatched shows stay at the main root level
                         showNode = treeShows.Nodes.Add(showNodeText);
+                        showNode.Tag = allShowItems;
                     }
 
                     var seasons = show
@@ -1946,56 +2070,110 @@ namespace MediaControlApp.Forms
 
             try
             {
-                // 1. Try to extract the real path directly from the selected tree node's Tag first
                 string targetDir = null;
+                string sourceNameToClean = CleanMediaTitle(mediaPathOrTitle);
+
                 var node = treeShows.SelectedNode;
+                MediaItem matchedItem = null;
+
                 if (node != null)
                 {
-                    MediaItem matchedItem = null;
+                    // Season node
                     if (node.Tag is List<MediaItem> list && list.Any())
                     {
                         matchedItem = list.FirstOrDefault();
                     }
+                    // Episode node
                     else if (node.Tag is MediaItem singleItem)
                     {
                         matchedItem = singleItem;
                     }
-
-                    if (matchedItem != null && !string.IsNullOrEmpty(matchedItem.FilePath))
+                    // Show node (Tag == null)
+                    else
                     {
-                        string fullPath = BuildFullPath(matchedItem.FilePath);
-                        if (File.Exists(fullPath)) targetDir = Path.GetDirectoryName(fullPath);
-                        else if (Directory.Exists(fullPath)) targetDir = fullPath;
+                        string showName = node.Text.Replace("★ ", "").Trim();
+
+                        matchedItem = items.FirstOrDefault(i =>
+                            !string.IsNullOrWhiteSpace(i.CachedSeriesName) &&
+                            string.Equals(
+                                i.CachedSeriesName,
+                                showName,
+                                StringComparison.OrdinalIgnoreCase));
                     }
                 }
 
-                // 2. Fallback to your original string resolution if node tag lookup didn't yield a directory
+                if (matchedItem != null &&
+                    !string.IsNullOrWhiteSpace(matchedItem.FilePath))
+                {
+                    string fullPath = BuildFullPath(matchedItem.FilePath);
+
+                    if (File.Exists(fullPath))
+                    {
+                        string seasonDir = Path.GetDirectoryName(fullPath);
+
+                        if (!string.IsNullOrEmpty(seasonDir))
+                        {
+                            string seasonName = Path.GetFileName(seasonDir);
+
+                            // If inside Season X folder move up to show folder
+                            if (seasonName.StartsWith("Season ", StringComparison.OrdinalIgnoreCase))
+                            {
+                                targetDir = Directory.GetParent(seasonDir)?.FullName;
+                            }
+                            else
+                            {
+                                targetDir = seasonDir;
+                            }
+                        }
+                    }
+                }
+
+                // Fallback if we still couldn't locate a show folder
                 if (string.IsNullOrEmpty(targetDir))
                 {
-                    string resolvedPath = null;
-                    try { resolvedPath = BuildFullPath(mediaPathOrTitle); } catch { resolvedPath = mediaPathOrTitle; }
-
-                    if (!string.IsNullOrEmpty(resolvedPath))
+                    try
                     {
-                        if (Directory.Exists(resolvedPath)) targetDir = resolvedPath;
-                        else if (File.Exists(resolvedPath)) targetDir = Path.GetDirectoryName(resolvedPath);
+                        string resolvedPath = BuildFullPath(mediaPathOrTitle);
+
+                        if (Directory.Exists(resolvedPath))
+                        {
+                            targetDir = resolvedPath;
+                        }
+                        else if (File.Exists(resolvedPath))
+                        {
+                            targetDir = Path.GetDirectoryName(resolvedPath);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore
                     }
                 }
 
-                string sourceNameToClean = !string.IsNullOrEmpty(targetDir) ? new DirectoryInfo(targetDir).Name : Path.GetFileNameWithoutExtension(mediaPathOrTitle);
+                // Last fallback for poster search name
+                if (string.IsNullOrWhiteSpace(sourceNameToClean) &&
+                    !string.IsNullOrEmpty(targetDir))
+                {
+                    sourceNameToClean = Path.GetFileName(targetDir);
+                }
 
                 _posterCancellationTokenSource?.Cancel();
                 _posterCancellationTokenSource = new CancellationTokenSource();
 
                 Image posterImg = await PosterManager.ResolveOrDownloadTvPosterAsync(
-                    targetDir, sourceNameToClean, RootFolder, _posterCancellationTokenSource.Token);
+                    targetDir,
+                    sourceNameToClean,
+                    RootFolder,
+                    _posterCancellationTokenSource.Token);
 
                 if (!_posterCancellationTokenSource.Token.IsCancellationRequested)
                 {
                     picPoster.Image = posterImg;
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Auto-poster error: {ex.Message}");
@@ -2252,8 +2430,11 @@ namespace MediaControlApp.Forms
             var itemsNeedingDuration = new List<(ListViewItem Item, MediaItem Ep, string FullPath)>();
 
             foreach (var ep in eps
-                .OrderByDescending(i => i.FavouriteByUser != null && i.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool f) && f)
-                .ThenBy(i => i.CachedEpisode))
+    .OrderBy(i => i.CachedSeason)
+    .ThenBy(i => i.CachedEpisode)
+    .ThenByDescending(i => i.FavouriteByUser != null &&
+                           i.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool f) &&
+                           f))
             {
                 bool isFav = ep.FavouriteByUser != null && ep.FavouriteByUser.TryGetValue(AppConfig.CurrentUser, out bool f) && f;
                 string displayName = isFav ? "★ " + ep.FileName : ep.FileName;
@@ -2525,15 +2706,14 @@ namespace MediaControlApp.Forms
         // Helper 2: Displays total unwatched time in the window title bar
         private void UpdateWatchTimeSummary(TimeSpan total, TimeSpan remaining)
         {
-            string remainingText = remaining.Hours > 0
-                ? $"{remaining.Hours}h {remaining.Minutes}m"
-                : $"{remaining.Minutes}m";
+            string remainingText =
+                $"{remaining.Days}d {remaining.Hours}h {remaining.Minutes:D2}m";
 
-            string totalText = total.Hours > 0
-                ? $"{total.Hours}h {total.Minutes}m"
-                : $"{total.Minutes}m";
+            string totalText =
+                $"{total.Days}d {total.Hours}h {total.Minutes:D2}m";
 
-            this.Text = $"Media Control - Season Time Remaining: {remainingText} (Total: {totalText})";
+            this.Text =
+                $"Media Control - Time Remaining: {remainingText} (Total: {totalText})";
         }
 
 
