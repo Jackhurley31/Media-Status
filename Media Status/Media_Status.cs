@@ -230,6 +230,53 @@ namespace MediaControlApp.Forms
 
 
 
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_QUERYENDSESSION)
+            {
+                SaveCurrentPlaybackPosition();
+            }
+
+            base.WndProc(ref m);
+        }
+
+
+
+
+        private void SaveCurrentPlaybackPosition()
+        {
+            try
+            {
+                string currentUser = AppConfig.CurrentUser ?? "Default";
+
+                if (_currentPlayingItem != null)
+                {
+                    _currentPlayingItem.SetSavedPosition(currentUser, _currentVlcTime);
+
+                    var masterItem = items.FirstOrDefault(i =>
+                        string.Equals(
+                            i.FilePath,
+                            _currentPlayingItem.FilePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+                    if (masterItem != null)
+                    {
+                        masterItem.SetSavedPosition(currentUser, _currentVlcTime);
+                    }
+                }
+
+                MediaCache.Save(JsonPath, items);
+                MediaCache.SaveLocal(items);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Playback save failed: {ex.Message}");
+            }
+        }
+
+
+
+
 
         private void ApplyButtonStyle(Button btn, Color backColor, Color foreColor)
         {
@@ -4073,6 +4120,8 @@ namespace MediaControlApp.Forms
 
                         bool finishedNaturally = false;
 
+                        DateTime lastProgressSave = DateTime.UtcNow;
+
                         // Monitor VLC process and poll for exact playback position
                         while (!currentPlayingProcess.HasExited && !_userStoppedPlayback)
                         {
@@ -4086,10 +4135,41 @@ namespace MediaControlApp.Forms
                             }
 
                             double exactTime = await GetVlcCurrentTimeSecondsAsync();
+
                             if (exactTime >= 0)
                             {
                                 _currentVlcTime = exactTime;
+
+                                if ((DateTime.UtcNow - lastProgressSave).TotalSeconds >= 60)
+                                {
+                                    ep.SetSavedPosition(currentUser, _currentVlcTime);
+
+                                    var masterItem = items.FirstOrDefault(i =>
+                                        string.Equals(
+                                            i.FilePath,
+                                            ep.FilePath,
+                                            StringComparison.OrdinalIgnoreCase));
+
+                                    if (masterItem != null)
+                                    {
+                                        masterItem.SetSavedPosition(currentUser, _currentVlcTime);
+                                    }
+
+                                    // Fast local write only
+                                    try
+                                    {
+                                        MediaCache.SaveLocal(items);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Debug.WriteLine($"Autosave failed: {ex.Message}");
+                                    }
+
+                                    lastProgressSave = DateTime.UtcNow;
+                                }
                             }
+
+
                         }
 
                         sw.Stop();
