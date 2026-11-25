@@ -1,20 +1,18 @@
 # 🎬 Media Status (Media Control App)
 
-**Media Status** is a lightweight, frontend media library manager built in C# WinForms for **VLC Media Player**. It brings modern TV show organization, season tracking, per-user progress logging, and automatic metadata fetching to local media libraries.
+Media Status is a lightweight frontend media library manager built in C# WinForms for VLC Media Player. It brings modern TV show organization, season tracking, per-user progress logging, and automatic metadata fetching to local media libraries.
 
-Drop the .exe inside the folder of Media and run and it will create the library which you can view watch
-
----
+Drop the `.exe` inside your media folder and run it to build your library and start watching.
 
 ## ✨ Features
 
-* 📺 **VLC Integration:** Powered by VLC's rock-solid playback engine with automatic window and display positioning.
+* 📺 **VLC Integration:** Powered by VLC's playback engine with automatic window and display positioning.
 * 📂 **Smart Library Views:** Group shows into Seasons, Movies, and dynamic lists like **Continue**, **Recently Added**, and **Watched**.
-* ⏳ **Watch State & Progress Tracking:** Remembers exact playback timestamps and supports **multi-user profile switching**.
+* ⏳ **Watch State & Progress Tracking:** Remembers exact playback timestamps and supports multi-user profile switching.
 * 🖼️ **Automated Poster Art:** Fetches series artwork on the fly via the TVMaze API.
 * 🏷️ **Auto-Rename Tooling:** Automatically standardizes episode file titles into clean `S01E01` patterns.
 * 💤 **Power Action Timer:** Schedule PC Shutdown, Sleep, Hibernate, or App Close upon video or queue completion.
-* 🌙 **Immersive Dark Theme:** Fully customizable dark mode with flexible UI font scaling.
+* 🌙 **Immersive Dark Theme:** Built-in dark mode with flexible UI font scaling.
 
 ---
 
