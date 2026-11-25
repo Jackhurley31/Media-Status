@@ -9,7 +9,7 @@ Drop the `.exe` inside your media folder and run it to build your library and st
 * 📺 **VLC Integration:** Powered by VLC's playback engine with automatic window and display positioning.
 * 📂 **Smart Library Views:** Group shows into Seasons, Movies, and dynamic lists like **Continue**, **Recently Added**, and **Watched**.
 * ⏳ **Watch State & Progress Tracking:** Remembers exact playback timestamps and supports multi-user profile switching.
-* 🖼️ **Automated Poster Art:** Fetches series artwork on the fly via the TVMaze API.
+* 🖼️ **Automated Poster Art:** Fetches series artwork on the fly via the TVMaze API and IMDb.
 * 🏷️ **Auto-Rename Tooling:** Automatically standardizes episode file titles into clean `S01E01` patterns.
 * 💤 **Power Action Timer:** Schedule PC Shutdown, Sleep, Hibernate, or App Close upon video or queue completion.
 * 🌙 **Immersive Dark Theme:** Built-in dark mode with flexible UI font scaling.
@@ -30,6 +30,6 @@ If you find **Media Status** useful and want to support ongoing development, con
 
 * **C# / .NET / WinForms**
 * **VLC Media Player** (HTTP requests & process management)
-* **TVMaze API**
+* **TVMaze API & IMDb**
 
 [![](https://img.shields.io/github/v/release/Jackhurley31/Media-Status?label=Download%20Latest%20Release&style=for-the-badge)](https://github.com/Jackhurley31/Media-Status/releases/latest)
